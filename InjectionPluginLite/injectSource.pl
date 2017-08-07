@@ -253,10 +253,10 @@ if ( !$learnt ) {
         my $testAppended = 0;
         my $appended = 0;
 
+
     FOUND:
         foreach my $log (@logs) {
                         print("!!\n!!*BPLog* $log**\n");
-
             open LOG, "gunzip <'$log' 2>/dev/null |";
             if ( $isInterface ) {
                 while ( my $line = <LOG> ) {
@@ -271,6 +271,7 @@ if ( !$learnt ) {
                             print "!!Injection: Compile completes\n";
                             ($nibCompiled) = $line =~ /-compilation-directory (.*?)\/\w+.lproj/;
                             $flags |= $INJECTION_STORYBOARD;
+                            print "!!Found1:\n";
                             last FOUND;
                     }
                 }
@@ -300,10 +301,11 @@ if ( !$learnt ) {
                                     my $swift_sources = join "\n", keys %$json_map;
                                     IO::File->new( "> $filelist" )->print( $swift_sources );
                                     $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
-                                    last FOUND;
+                                    print "!!Found2:\n";
+                                    ##last FOUND;
                                 }
                             }
-                            error "Could not locate filemap";
+                            # error "Could not locate filemap";
                         }
                     }
 
@@ -327,7 +329,7 @@ if ( !$learnt ) {
                         $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
                         $testAppended = 1;
                     }
-                    #print "!!R: $testAppended + $appended\n";
+                    # print "!!R: $testAppended + $appended\n";
                     last FOUND if ($testAppended + $appended) == 2;
                 }
             }
@@ -445,9 +447,12 @@ if ( $learnt ) {
             $testCounterpartLearnt =~ s/-primary-file//g;
             $testCounterpartLearnt =~ s/\s($helper\s)/ -primary-file $1/g;
             $testCounterpartLearnt =~ s/([()])/\\$1/g;
+            $testCounterpartLearnt =~ s/CodeCoverage\/Intermediates\///g;
+            $testCounterpartLearnt =~ s/\-profile\-generate//g;
+            $testCounterpartLearnt =~ s/\-profile\-coverage\-mapping//g;
 
             #print "!!Compiling TestCounterPart\n";
-            #print "!!Compiling0 $testCounterpartLearnt\n";
+            print "!!Compiling0 $testCounterpartLearnt\n";
             foreach my $out (`time $testCounterpartLearnt 2>&1`) {
                 print "!!$out";
                 print rtfEscape( $out );
