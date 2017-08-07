@@ -14,6 +14,7 @@ use FindBin;
 use lib $FindBin::Bin;
 use JSON::PP;
 use common;
+use List::MoreUtils qw(uniq);
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";
 my $errorHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red255\\green255\\blue130;}\\cb2";
@@ -21,6 +22,14 @@ my $errorHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red255\\green255\\blue
 my $bundleProjectFile = "$InjectionBundle/InjectionBundle.xcodeproj/project.pbxproj";
 my $bundleProjectSource = -f $bundleProjectFile && loadFile( $bundleProjectFile );
 my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
+my $fileName = $selectedFile;
+$fileName =~ m/(\w*)\.(swift)/;
+$fileName = $1;
+my $fileNameExtension = $2;
+my $testCounterpartFile = $selectedFile;
+$testCounterpartFile =~ s/.*\/(\w*).swift/$1Tests\.swift/;
+my $testCounterpartLearnt = "";
+my @helpers = ();
 my $isSwift = $selectedFile =~ /\.swift$/;
 
 use utf8;
@@ -53,6 +62,8 @@ sub mtime {
     my ($file) = @_;
     return (stat $file)[9]||0;
 }
+
+#print "!!$xcodeApp\n";
 
 if ( !$executable ) {
     print "Application is not connected.\n";
@@ -155,6 +166,7 @@ $localBundle =~ s@^.*/Build/@$buildRoot/@ if $buildRoot;
 
 #unlink $infoFile if $buildRoot && !-d $localBundle;
 system "rm -rf \"$localBundle/Frameworks/IDEBundleInjection.framework\"";
+print "///////$localBinary (localBinary)";
 
 if ( $localBinary && $bundleProjectSource =~ s/(BUNDLE_LOADER = )([^;]+;)/$1"$localBinary";/g ) {
     print "Patching bundle project to app path: $localBinary\n";
@@ -224,24 +236,31 @@ my $sbInjection = $flags & $INJECTION_STORYBOARD;
 $flags &= ~$INJECTION_STORYBOARD;
 my $nibCompiled;
 
+
 if ( !$learnt ) {
     foreach my $selectedFile (split ';', $selectedFile) {
         (my $escaped = $selectedFile) =~ s/([' ])/\\$1/g;
         my ($filename) = $selectedFile =~ /\/([^\/]+)$/;
         my $isInterface = $selectedFile =~ /\.(storyboard|xib)$/;
+            #print("!!\n!!*BP* $selectedFile**\n");
 
         if ( time() - mtime($selectedFile) > 5 ) {
-            print("!!\n!!** File not recently modified. Did you save it? **\n");
+            print("!!\n!!** File32 not recently modified. Did you save it? **\n");
         }
 
         local $/ = "\r";
+
+        my $testAppended = 0;
+        my $appended = 0;
+
     FOUND:
         foreach my $log (@logs) {
+                        print("!!\n!!*BPLog* $log**\n");
+
             open LOG, "gunzip <'$log' 2>/dev/null |";
             if ( $isInterface ) {
                 while ( my $line = <LOG> ) {
                     error "Enable storyboard injection on the parameters panel and restart app" if !$sbInjection;
-
                     if ( index( $line, $filename ) != -1 &&
                         $line =~ /usr\/bin\/ibtool.+?("$selectedFile"|\Q$escaped\E)/ ) {
                             (my $lout = $line) =~ s/\\/\\\\/g;
@@ -258,11 +277,16 @@ if ( !$learnt ) {
             }
             else {
                 while ( my $line = <LOG> ) {
-                    if ( index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
+                    #print "!!*BP@* $line\n";
+                    if ( $appended == 0 && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
                             ]}("$selectedFile"|\Q$escaped\E)! ) {
+                                #print "!!LL: $line\n";
+#                        $learnt =~ s/-import-objc-header (\”[^"]*\”|\S+) //;
+#                                $learnt =~ s/\\"/\"/g;
                         $learnt .= ($learnt?';;':'').$line;
+                        $appended = 1;
                         if ( $learnt =~ / -filelist / ) {
                             while ( my $line = <LOG> ) {
                                 if ( my($filemap) = $line =~ / -output-file-map ([^ \\]+(?:\\ [^ \\]+)*) / ) {
@@ -281,8 +305,30 @@ if ( !$learnt ) {
                             }
                             error "Could not locate filemap";
                         }
-                        last FOUND;
                     }
+
+                    if ( index( $line, $testCounterpartFile ) != -1 && index( $line, " $arch" ) != -1 &&
+                        $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
+                                $isSwift ? " -primary-file ": " -c "
+                            ]}.*("$testCounterpartFile"|\Q$testCounterpartFile\E)! ) {
+                                #print "!!TESTLL: $line\n";
+                        $testCounterpartLearnt = $line;
+                        #print "!!EE: $testCounterpartLearnt\n";
+                         my @frameworks = $line =~ m/(\-F\s[^\s]*\s)/g;
+                         @helpers = $line =~ m/\s([^\s]*TestHelper\.(?:swift|m))\s/g;
+                         #print "!!HH: @helpers\n";
+                         my @testFilePath = $line =~ m/\s([^\s]*$fileName\Tests\.$fileNameExtension)/;
+                         my $testFilePath = join(" ", @testFilePath);
+                         #print "!!OOO: $testFilePath\n";
+                        my $frameworksLine = join(" ", @frameworks);
+                         #print "!!PP: $frameworksLine\n";
+                         push @helpers, $testFilePath;
+                        my $helpers = join(" ", @helpers);
+                        $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
+                        $testAppended = 1;
+                    }
+                    #print "!!R: $testAppended + $appended\n";
+                    last FOUND if ($testAppended + $appended) == 2;
                 }
             }
         }
@@ -292,6 +338,7 @@ if ( !$learnt ) {
         error "Could not locate compile command for $escaped\nInjection doesn't work when using whole module optimisation.\nIf you have switched xcode versions, please cmd-shift-k to clean then rebuild the project so there is a complete build history logged and try again.\n@logs" if $isSwift && !$learnt;
     }
 }
+                        #print "!!XX: $learnt\n";
 
 ############################################################################
 #
@@ -305,7 +352,6 @@ if ( !$learnt ) {
 my $changesFile = "$InjectionBundle/BundleContents.m";
 my $changesSource = IO::File->new( "> $changesFile" )
     or error "Could not open changes source file as: $!";
-
 $changesSource->print( <<CODE );
 /*
     Generated for Injection of class implementations
@@ -368,10 +414,9 @@ $changesSource->close();
 #
 
 my $obj = '';
+my @objTests = ();
 my $sdk = ($config =~ /-sdk (\w+)/)[0] || 'macosx';
-
 if ( $learnt ) {
-
     $obj = "$arch/injecting_class.o";
     $learnt =~ s@( -o ).*$@$1$InjectionBundle/$obj@
         or die "Could not locate object file in: $learnt";
@@ -379,14 +424,37 @@ if ( $learnt ) {
 
     $learnt =~ s/([()])/\\$1/g;
     rtfEscape( my $lout = $learnt );
-    print "Learnt compile: $compileHighlight $lout\n";
+    #print "!!Learnt compile: $compileHighlight $lout\n";
 
-    print "!!Compiling $selectedFile\n";
+    #print "!!Compiling $selectedFile\n";
     foreach my $out (`time $learnt 2>&1`) {
         print "!!$out";
         print rtfEscape( $out );
     }
     error "Learnt compile failed" if $?;
+
+    my $orgLearnt = $testCounterpartLearnt;
+    if ($testCounterpartLearnt ne ""){
+        my @uniqueHelpers = uniq @helpers;
+        for my $i (0..$#uniqueHelpers){
+            my $helper = $uniqueHelpers[$i];
+            my $objTests = "$arch/injecting_class$i.o";
+            push @objTests, $objTests;
+            $testCounterpartLearnt =~ s@( -o ).*$@$1$InjectionBundle/$objTests@
+            or die "Could not locate object file in: $learnt";
+            $testCounterpartLearnt =~ s/-primary-file//g;
+            $testCounterpartLearnt =~ s/\s($helper\s)/ -primary-file $1/g;
+            $testCounterpartLearnt =~ s/([()])/\\$1/g;
+
+            #print "!!Compiling TestCounterPart\n";
+            #print "!!Compiling0 $testCounterpartLearnt\n";
+            foreach my $out (`time $testCounterpartLearnt 2>&1`) {
+                print "!!$out";
+                print rtfEscape( $out );
+            }
+            error "Learnt compile failed" if $?;
+        }
+    }
 
     #if ( $isSwift ) {
         my ($toolchain) = $learnt =~ m#(@{[$xcodeApp||'/Applications/Xcode']}.*?\.xctoolchain)/#;
@@ -421,7 +489,15 @@ if ( -d "Pods" ) {
 }
 
 $bundleProjectSource =~ s/(OTHER_LDFLAGS = \().*?("-undefined)/$1"$obj", $2/sg;
+for ($testCounterpartLearnt ne ""){
+    my $allHelpers = join("\", \"", @objTests);
+    $bundleProjectSource =~ s/(OTHER_LDFLAGS = \().*?("-undefined)/$1"$obj", "$allHelpers" , $2/sg;
+}
 saveFile( $bundleProjectFile, $bundleProjectSource );
+
+
+
+
 
 ############################################################################
 #
@@ -441,10 +517,9 @@ my $rebuild = 0;
 
 build:
 my $build = "$xcodebuild $config";
-
 my $buildScript = "$archDir/compile_commands.sh";
 my ($recording, $recorded);
-
+print "!!... $build\n";
 if ( mtime( $bundleProjectFile ) > mtime( $buildScript ) ) {
     $recording = IO::File->new( "> $buildScript" )
         or die "Could not open '$buildScript' as: $!";
@@ -455,7 +530,7 @@ else {
     $build = "bash $dotdot$buildScript # $build";
 }
 
-print "$build\n\n";
+print "!!FINAL: $build\n\n";
 open BUILD, "cd $InjectionBundle && $build 2>&1 |" or error "Build failed $!\n";
 
 my ($bundlePath, $warned);
@@ -468,6 +543,7 @@ while ( my $line = <BUILD> ) {
         }
         (my $bundle_frameworks = $ENV{BUNDLE_FRAMEWORKS}) =~ s/ /\\\\ /g;
         $cmd =~ s/$bundle_frameworks/"\$BUNDLE_FRAMEWORKS"/g;
+        print "!!CMD: $cmd";
         $recording->print( "echo \"$cmd\"; time $cmd 2>&1 &&\n" );
         $recorded++;
     }
@@ -504,7 +580,6 @@ while ( my $line = <BUILD> ) {
     if ( $line =~ /has been modified since the precompiled header/ ) {
         $rebuild++; # retry once after xcodebuild clean
     }
-
     print $line;
 }
 
@@ -527,6 +602,12 @@ if ( $recording ) {
     close $recording;
 }
 
+
+
+
+
+
+
 ############################################################################
 #
 # Now we actually load the bundle using specially prefixed commands sent
@@ -540,7 +621,7 @@ my ($bundleRoot) = $bundlePath =~ m@^\"?(.*)/([^/]*)$@;
 my $newBundle = $isIOS ? "$bundleRoot/$productName.bundle" : "$appPackage/$productName.bundle";
 
 my $command = "rm -rf \"$newBundle\" && cp -r \"$bundlePath\" \"$newBundle\"";
-print "$command\n";
+#print "!!PP2:$command\n";
 0 == system $command or error "Could not copy bundle to: $newBundle";
 
 $bundlePath = $newBundle;
