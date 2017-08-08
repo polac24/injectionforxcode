@@ -300,8 +300,8 @@ if ( !$learnt ) {
                                     my $swift_sources = join "\n", keys %$json_map;
                                     IO::File->new( "> $filelist" )->print( $swift_sources );
                                     $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
-                                    # print "!!Found2:\n";
-                                    # print "!!Found2: $filelist\n";
+                                    print "!!Found2:\n";
+                                    print "!!Found2: $filelist\n";
                                     #last FOUND;
                                     last
                                 }
@@ -328,7 +328,7 @@ if ( !$learnt ) {
                         my $helpers = join(" ", @helpers);
                         # print "!!HH: $helpers\n";
 
-                        $learnt =~ s/\-F\s/\Q$helpers\E \Q$frameworksLine\E \-F /;
+                        $learnt =~ s/\-F\s/\Q$helpers\E $frameworksLine \-F /;
                         $testAppended = 1;
                     }
                     # print "!!R: $testAppended + $appended\n";
@@ -392,6 +392,8 @@ extern
 + (void)load {
     Class bundleInjection = NSClassFromString(@"BundleInjection");
     [bundleInjection autoLoadedNotify:$flags hook:(void *)injectionHook];
+
+    [[NSClassFromString(@"NSBundle")  bundleWithPath:[((NSString *)[[NSProcessInfo processInfo] environment][@"SIMULATOR_PLATFORM_RUNTIME_OVERLAY_ROOT"])  stringByReplacingOccurrencesOfString:@"CoreSimulator/RuntimeOverlay" withString:@"Frameworks/XCTest.framework"]] load];
 }
 
 \@end
@@ -431,9 +433,9 @@ if ( $learnt ) {
 
     $learnt =~ s/([()])/\\$1/g;
     rtfEscape( my $lout = $learnt );
-    #print "!!Learnt compile: $compileHighlight $lout\n";
+    # print "!!Learnt compile: $compileHighlight $lout\n";
 
-    # print "!!Compiling1 $learnt\n";
+    print "!!Compiling1 $learnt\n";
     foreach my $out (`time $learnt 2>&1`) {
         print "!!$out";
         print rtfEscape( $out );
