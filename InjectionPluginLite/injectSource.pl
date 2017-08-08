@@ -27,7 +27,7 @@ $fileName =~ m/(\w*)\.(swift)/;
 $fileName = $1;
 my $fileNameExtension = $2;
 my $testCounterpartFile = $selectedFile;
-$testCounterpartFile =~ s/.*\/(\w*).swift/$1Tests\.swift/;
+$testCounterpartFile =~ s/.*\/([^\s]*).swift/$1Tests\.swift/;
 my $testCounterpartLearnt = "";
 my @helpers = ();
 my $isSwift = $selectedFile =~ /\.swift$/;
@@ -253,7 +253,6 @@ if ( !$learnt ) {
         my $testAppended = 0;
         my $appended = 0;
 
-
     FOUND:
         foreach my $log (@logs) {
                         print("!!\n!!*BPLog* $log**\n");
@@ -301,8 +300,10 @@ if ( !$learnt ) {
                                     my $swift_sources = join "\n", keys %$json_map;
                                     IO::File->new( "> $filelist" )->print( $swift_sources );
                                     $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
-                                    print "!!Found2:\n";
-                                    ##last FOUND;
+                                    # print "!!Found2:\n";
+                                    # print "!!Found2: $filelist\n";
+                                    #last FOUND;
+                                    last
                                 }
                             }
                             # error "Could not locate filemap";
@@ -312,21 +313,22 @@ if ( !$learnt ) {
                     if ( index( $line, $testCounterpartFile ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}.*("$testCounterpartFile"|\Q$testCounterpartFile\E)! ) {
+                            ]}.*("\Q$testCounterpartFile\E"|\Q$testCounterpartFile\E)! ) {
                                 #print "!!TESTLL: $line\n";
                         $testCounterpartLearnt = $line;
-                        #print "!!EE: $testCounterpartLearnt\n";
+                        # print "!!EE: $testCounterpartLearnt\n";
                          my @frameworks = $line =~ m/(\-F\s[^\s]*\s)/g;
                          @helpers = $line =~ m/\s([^\s]*TestHelper\.(?:swift|m))\s/g;
-                         #print "!!HH: @helpers\n";
-                         my @testFilePath = $line =~ m/\s([^\s]*$fileName\Tests\.$fileNameExtension)/;
+                         my @testFilePath = $line =~ m/\s([^\s]*\Q$fileName\E\Tests\.$fileNameExtension)/;
                          my $testFilePath = join(" ", @testFilePath);
-                         #print "!!OOO: $testFilePath\n";
+                         # print "!!OOO: $testCounterpartFile\n";
                         my $frameworksLine = join(" ", @frameworks);
                          #print "!!PP: $frameworksLine\n";
                          push @helpers, $testFilePath;
                         my $helpers = join(" ", @helpers);
-                        $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
+                        # print "!!HH: $helpers\n";
+
+                        $learnt =~ s/\-F\s/\Q$helpers\E \Q$frameworksLine\E \-F /;
                         $testAppended = 1;
                     }
                     # print "!!R: $testAppended + $appended\n";
@@ -423,12 +425,15 @@ if ( $learnt ) {
     $learnt =~ s@( -o ).*$@$1$InjectionBundle/$obj@
         or die "Could not locate object file in: $learnt";
     ###$learnt =~ s/( -DDEBUG\S* )/$1-DINJECTION_BUNDLE /;
+    # $learnt =~ s/Intermediates\/CodeCoverage\///g;
+    $learnt =~ s/\-profile\-generate//g;
+    $learnt =~ s/\-profile\-coverage\-mapping//g;
 
     $learnt =~ s/([()])/\\$1/g;
     rtfEscape( my $lout = $learnt );
     #print "!!Learnt compile: $compileHighlight $lout\n";
 
-    #print "!!Compiling $selectedFile\n";
+    # print "!!Compiling1 $learnt\n";
     foreach my $out (`time $learnt 2>&1`) {
         print "!!$out";
         print rtfEscape( $out );
@@ -445,14 +450,14 @@ if ( $learnt ) {
             $testCounterpartLearnt =~ s@( -o ).*$@$1$InjectionBundle/$objTests@
             or die "Could not locate object file in: $learnt";
             $testCounterpartLearnt =~ s/-primary-file//g;
-            $testCounterpartLearnt =~ s/\s($helper\s)/ -primary-file $1/g;
+            $testCounterpartLearnt =~ s/\s(\Q$helper\E\s)/ -primary-file $1/g;
             $testCounterpartLearnt =~ s/([()])/\\$1/g;
-            $testCounterpartLearnt =~ s/CodeCoverage\/Intermediates\///g;
+            # $testCounterpartLearnt =~ s/CodeCoverage\/Intermediates\///g;
             $testCounterpartLearnt =~ s/\-profile\-generate//g;
             $testCounterpartLearnt =~ s/\-profile\-coverage\-mapping//g;
 
             #print "!!Compiling TestCounterPart\n";
-            print "!!Compiling0 $testCounterpartLearnt\n";
+            # print "!!Compiling0 $testCounterpartLearnt\n";
             foreach my $out (`time $testCounterpartLearnt 2>&1`) {
                 print "!!$out";
                 print rtfEscape( $out );
