@@ -30,6 +30,7 @@ my $testCounterpartFile = $selectedFile;
 $testCounterpartFile =~ s/.*\/([^\s]*).swift/$1Tests\.swift/;
 my $testCounterpartLearnt = "";
 my @helpers = ();
+my @resources = ();
 my $isSwift = $selectedFile =~ /\.swift$/;
 
 use utf8;
@@ -252,10 +253,20 @@ if ( !$learnt ) {
 
         my $testAppended = 0;
         my $appended = 0;
-
+        my $moduleName = "";
     FOUND:
         foreach my $log (@logs) {
                         print("!!\n!!*BPLog* $log**\n");
+
+                        open MODULE_NAME_OPEN, "gunzip <'$log' 2>/dev/null |";
+                         while ( my $line = <MODULE_NAME_OPEN> ) {
+                            if (my($module) = $line =~ /PRODUCT_MODULE_NAME\=\s*([^\s]*)/ ) {
+                                $moduleName = $module;
+                                last
+                            }
+                         }
+                         close MODULE_NAME_OPEN;
+
             open LOG, "gunzip <'$log' 2>/dev/null |";
             if ( $isInterface ) {
                 while ( my $line = <LOG> ) {
@@ -263,7 +274,7 @@ if ( !$learnt ) {
                     if ( index( $line, $filename ) != -1 &&
                         $line =~ /usr\/bin\/ibtool.+?("$selectedFile"|\Q$escaped\E)/ ) {
                             (my $lout = $line) =~ s/\\/\\\\/g;
-                            print "!!Injection: Compiling $filename (just a sec...)\n";
+                            # print "!!Injection: Compiling $filename (just a sec...)\n";
                             print "Interface compile: $compileHighlight $lout\n";
                             0 == system "time $line 2>&1"
                             or die "Interface compile failed";
@@ -278,10 +289,10 @@ if ( !$learnt ) {
             else {
                 while ( my $line = <LOG> ) {
                     #print "!!*BP@* $line\n";
-                    if ( $appended == 0 && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
+                    if ( $appended == 0  && $line =~ /\s\-module\-name\s$moduleName\s/ && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}("$selectedFile"|\Q$escaped\E)! ) {
+                            ]}("$selectedFile"|\Q$escaped\E)! )  {
                                 #print "!!LL: $line\n";
 #                        $learnt =~ s/-import-objc-header (\”[^"]*\”|\S+) //;
 #                                $learnt =~ s/\\"/\"/g;
@@ -300,8 +311,8 @@ if ( !$learnt ) {
                                     my $swift_sources = join "\n", keys %$json_map;
                                     IO::File->new( "> $filelist" )->print( $swift_sources );
                                     $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
-                                    print "!!Found2:\n";
-                                    print "!!Found2: $filelist\n";
+                                    # print "!!Found2:\n";
+                                    # print "!!Found2: $filelist\n";
                                     #last FOUND;
                                     last
                                 }
@@ -313,8 +324,9 @@ if ( !$learnt ) {
                     if ( index( $line, $testCounterpartFile ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}.*("\Q$testCounterpartFile\E"|\Q$testCounterpartFile\E)! ) {
-                                #print "!!TESTLL: $line\n";
+                            ]}.*("\Q$testCounterpartFile\E"|\Q$testCounterpartFile\E)! 
+                            ) {
+                                # print "!!TESTLL: $line\n";
                         $testCounterpartLearnt = $line;
                         # print "!!EE: $testCounterpartLearnt\n";
                          my @frameworks = $line =~ m/(\-F\s[^\s]*\s)/g;
@@ -328,13 +340,18 @@ if ( !$learnt ) {
                         my $helpers = join(" ", @helpers);
                         # print "!!HH: $helpers\n";
 
-                        $learnt =~ s/\-F\s/\Q$helpers\E $frameworksLine \-F /;
+                        $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
                         $testAppended = 1;
                     }
-                    # print "!!R: $testAppended + $appended\n";
-                    last FOUND if ($testAppended + $appended) == 2;
+                    my @newResources = $line =~ m/CpResource\s([^\s]*)/g;
+                    push (@resources, @newResources);
                 }
             }
+            my $assets = join(", ", @resources);
+                                # print "!!R: $testAppended + $appended\n";
+            # print "!!R3: $assets\n";
+            last FOUND if ($testAppended + $appended) == 2;
+            @resources = ();
         }
 
         close LOG;
@@ -390,13 +407,13 @@ extern
 \@implementation NSObject($productName)
 
 + (void)load {
+    [[NSClassFromString(@"NSBundle")  bundleWithPath:[((NSString *)[[NSProcessInfo processInfo] environment][@"SIMULATOR_PLATFORM_RUNTIME_OVERLAY_ROOT"])  stringByReplacingOccurrencesOfString:@"CoreSimulator/RuntimeOverlay" withString:@"Frameworks/XCTest.framework"]] load];
     Class bundleInjection = NSClassFromString(@"BundleInjection");
     [bundleInjection autoLoadedNotify:$flags hook:(void *)injectionHook];
-
-    [[NSClassFromString(@"NSBundle")  bundleWithPath:[((NSString *)[[NSProcessInfo processInfo] environment][@"SIMULATOR_PLATFORM_RUNTIME_OVERLAY_ROOT"])  stringByReplacingOccurrencesOfString:@"CoreSimulator/RuntimeOverlay" withString:@"Frameworks/XCTest.framework"]] load];
 }
 
 \@end
+
 
 int injectionHook() {
     NSLog( \@"injectionHook():" );
@@ -435,7 +452,7 @@ if ( $learnt ) {
     rtfEscape( my $lout = $learnt );
     # print "!!Learnt compile: $compileHighlight $lout\n";
 
-    print "!!Compiling1 $learnt\n";
+    # print "!!Compiling1 $learnt\n";
     foreach my $out (`time $learnt 2>&1`) {
         print "!!$out";
         print rtfEscape( $out );
@@ -458,10 +475,10 @@ if ( $learnt ) {
             $testCounterpartLearnt =~ s/\-profile\-generate//g;
             $testCounterpartLearnt =~ s/\-profile\-coverage\-mapping//g;
 
-            #print "!!Compiling TestCounterPart\n";
+            # print "!!Compiling TestCounterPart\n";
             # print "!!Compiling0 $testCounterpartLearnt\n";
             foreach my $out (`time $testCounterpartLearnt 2>&1`) {
-                print "!!$out";
+                # print "!!$out";
                 print rtfEscape( $out );
             }
             error "Learnt compile failed" if $?;
@@ -631,6 +648,23 @@ print "Renaming bundle so it reloads..\n";
 
 my ($bundleRoot) = $bundlePath =~ m@^\"?(.*)/([^/]*)$@;
 my $newBundle = $isIOS ? "$bundleRoot/$productName.bundle" : "$appPackage/$productName.bundle";
+
+
+##### COPY ASSETS
+# print "!!Copying assets to bundle ..\n";
+# my $rr = join(", ", @resources);
+
+foreach my $fileResourcePath (@resources) {
+    my $copyCommand = "cp -f \"$projRoot$fileResourcePath\"  \"$bundlePath\" || true";
+    0 == system $copyCommand;
+}
+# my $copyCommand = "find -L $projRoot -type f   -name \"*.json\"  | xargs -t -I {} cp -f {}  \"$bundlePath\"";
+# print "!!PP1:$copyCommand\n";
+# 0 == system $copyCommand;
+
+
+
+
 
 my $command = "rm -rf \"$newBundle\" && cp -r \"$bundlePath\" \"$newBundle\"";
 #print "!!PP2:$command\n";
