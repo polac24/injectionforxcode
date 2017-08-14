@@ -253,15 +253,15 @@ if ( !$learnt ) {
 
         my $testAppended = 0;
         my $appended = 0;
-        my $moduleName = "";
     FOUND:
         foreach my $log (@logs) {
                         print("!!\n!!*BPLog* $log**\n");
-
+                        my $moduleName = "";
                         open MODULE_NAME_OPEN, "gunzip <'$log' 2>/dev/null |";
                          while ( my $line = <MODULE_NAME_OPEN> ) {
                             if (my($module) = $line =~ /PRODUCT_MODULE_NAME\=\s*([^\s]*)/ ) {
                                 $moduleName = $module;
+                                print "!!M: $module\n";
                                 last
                             }
                          }
@@ -289,7 +289,7 @@ if ( !$learnt ) {
             else {
                 while ( my $line = <LOG> ) {
                     #print "!!*BP@* $line\n";
-                    if ( $appended == 0  && $line =~ /\s\-module\-name\s$moduleName\s/ && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
+                    if ( $appended == 0  && ($moduleName == "" || $line =~ /\s\-module\-name\s$moduleName\s/) && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
                             ]}("$selectedFile"|\Q$escaped\E)! )  {
