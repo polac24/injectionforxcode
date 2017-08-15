@@ -350,7 +350,7 @@ if ( !$learnt ) {
             my $assets = join(", ", @resources);
                                 # print "!!R: $testAppended + $appended\n";
             # print "!!R3: $assets\n";
-            last FOUND if ($testAppended + $appended) == 2;
+            last FOUND if $appended == 1;
             @resources = ();
         }
 
