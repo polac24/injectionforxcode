@@ -269,18 +269,23 @@ if ( !$learnt ) {
                          while ( my $line = <MODULE_NAME_OPEN> ) {
                             if (my($module) = $line =~ /PRODUCT_MODULE_NAME\=\s*([^\s]*)/ ) {
                                 $moduleName = $module;
-                                print "!!M: $module\n";
-                                last
+                                # print "!!M1: $module\n";
+                                # print "!!M2: $line\n";
+
+                                # last
                             }
                             if ($line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}\S*("$selectedFile"|\Q$escaped\E)!
-                            && $line =~ /\-module\-name\s([^\s]*)\s/ ){
-                                print "!!nr2: $line\n";
+                            ]}\S*\/(\Q$selectedFile\E|\Q$escaped\E)!
+                            && $line =~ /\-module\-name\s(\S*)\s/ ){
+                                # print "!!nr2: $line\n";
                                 $fallbackModuleName = $1;
                             }
                          }
                          $moduleName = $fallbackModuleName if  $moduleName eq "";
+                         $moduleName = $fallbackModuleName;
+                        print "!!M: $moduleName\n";
+
                          close MODULE_NAME_OPEN;
 print "!! MODULE: $moduleName\n";
 use IO::Uncompress::Gunzip qw($GunzipError);
@@ -359,21 +364,21 @@ my $fileAppended = 0;
                     if ( $testAppended == 0 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}\S*(\Q$testCounterpartFile\E|\Q$testCounterpartFile\E)! 
+                            ]}\S*\/(\Q$testCounterpartFile\E|\Q$testCounterpartFile\E)! 
                             ) {
                                 print "!!TestHelperTLL: $line \n";
                         $testCounterpartLearnt = $line;
                         # print "!!EE: $testCounterpartLearnt\n";
                          my @frameworks = $line =~ m/(\-F\s[^\s]*\s)/g;
-                         @helpers = $line =~ m/\s(\S*TestHelper\.(?:swift|m))\s/g;
-                         my @testFilePath = $line =~ m/\s(\S*\Q$testCounterpartFile\E)/;
+                         @helpers = $line =~ m/(\S*TestHelper\S*\.(?:swift|m))\s/g;
+                         my @testFilePath = $line =~ m/\s(\S*\/\Q$testCounterpartFile\E)/;
                          my $testFilePath = join(" ", @testFilePath);
                          print "!!OOO: $testFilePath\n";
                         my $frameworksLine = join(" ", @frameworks);
                          #print "!!PP: $frameworksLine\n";
                          push @helpers, $testFilePath;
                         my $helpers = join(" ", @helpers);
-                        # print "!!HH: $helpers\n";
+                        print "!!HH: $helpers\n";
 
                         $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
                         $testAppended = 1;
@@ -544,6 +549,13 @@ if ( $learnt ) {
             error "Learnt compile failed" if $?;
         }
     }
+
+    ## All other calready compiled frameworks linked to the project
+
+    my @frameworks = $learnt =~ m/(\-F\s\S*\s)/g;
+    my $frameworksLine = join(" ", @frameworks);
+    print "!! FFFF: $frameworksLine\n";
+    $obj .=  "\", \"$frameworksLine";
 
 
     #if ( $isSwift ) {
