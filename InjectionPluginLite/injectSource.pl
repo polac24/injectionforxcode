@@ -332,8 +332,8 @@ my $fileAppended = 0;
                      && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}.*($selectedFile|\Q$escaped\E)! )  {
-                                # print "!!LL: $line\n";
+                            ]}\S*\/($selectedFile|\Q$escaped\E)! )  {
+                                print "!!LL: $line\n";
 #                        $learnt =~ s/-import-objc-header (\”[^"]*\”|\S+) //;
 #                                $learnt =~ s/\\"/\"/g;
                         $learnt .= ($learnt?';;':'').$line;
