@@ -23,7 +23,6 @@ my $bundleProjectFile = "$InjectionBundle/InjectionBundle.xcodeproj/project.pbxp
 my $bundleProjectSource = -f $bundleProjectFile && loadFile( $bundleProjectFile );
 my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
 $selectedFile =~ s/.*\/([^\/]*)/$1/;
-$selectedFile =~ s/Tests\.swift/\.swift/;
 print "!! SS:$selectedFile\n";
 my $fileName = $selectedFile;
 $fileName =~ m/(\w*)\.(swift)/;
@@ -260,11 +259,17 @@ if ( !$learnt ) {
         my $appended = 0;
         my $appendedSwiftc = 0;
         my $appendedSwiftcCopy = 0;
+        my @swiftdeps = ();
+        my @referencesUpdated = ();
+        my $testModulesRegEx = "";
+
     FOUND:
         foreach my $log (@logs) {
                         print("!!\n!!*BPLog* $log**\n");
                         my $moduleName = "";
                         my $fallbackModuleName = "";
+                        # all modules for tests (both UI and unit)
+                        my @testModules = ();
                         open MODULE_NAME_OPEN, "gunzip <'$log' 2>/dev/null |";
                          while ( my $line = <MODULE_NAME_OPEN> ) {
                             if (my($module) = $line =~ /PRODUCT_MODULE_NAME\=\s*([^\s]*)/ ) {
@@ -281,13 +286,20 @@ if ( !$learnt ) {
                                 # print "!!nr2: $line\n";
                                 $fallbackModuleName = $1;
                             }
+                            if ($line =~ /\-framework\sXCTest\s/ && (my($testModule) = $line =~ /([^\/\s]*)\.swiftmodule\s/) ){
+                                # print "!!TESTMODULE: $testModule\n";
+                                push (@testModules, $testModule);
+                            }
                          }
-                         $moduleName = $fallbackModuleName if  $moduleName eq "";
+                         @testModules = grep !/INTests/, @testModules;
+                         $testModulesRegEx = join ("|",@testModules);
+                         # $moduleName = $fallbackModuleName if  $moduleName eq "";
                          $moduleName = $fallbackModuleName;
                         print "!!M: $moduleName\n";
-
+                        print "!!MTEST: @testModules\n";
                          close MODULE_NAME_OPEN;
 print "!! MODULE: $moduleName\n";
+
 use IO::Uncompress::Gunzip qw($GunzipError);
 my $LOG = IO::Uncompress::Gunzip->new( $log) or die "IO::Uncompress::Gunzip failed: $GunzipError\n";
 my $count = 0;
@@ -332,7 +344,12 @@ my $fileAppended = 0;
                      && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
-                            ]}\S*\/($selectedFile|\Q$escaped\E)! )  {
+                            ]}\S*\/($selectedFile|\Q$escaped\E)! 
+                            && (my($swiftdepspath) = $line =~ /(\S*\.swiftdeps)\s/)
+                            )  {
+                                print "!!swiftdepspath: $swiftdepspath\n";
+                                @referencesUpdated = get_swiftdeps($swiftdepspath, "provides-nominal");
+
                                 print "!!LL: $line\n";
 #                        $learnt =~ s/-import-objc-header (\”[^"]*\”|\S+) //;
 #                                $learnt =~ s/\\"/\"/g;
@@ -361,36 +378,78 @@ my $fileAppended = 0;
 
                         }
 
-                    if ( $testAppended == 0 && index( $line, " $arch" ) != -1 &&
-                        $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
-                                $isSwift ? " -primary-file ": " -c "
-                            ]}\S*\/(\Q$testCounterpartFile\E|\Q$testCounterpartFile\E)! 
-                            ) {
-                                print "!!TestHelperTLL: $line \n";
-                        $testCounterpartLearnt = $line;
-                        # print "!!EE: $testCounterpartLearnt\n";
-                         my @frameworks = $line =~ m/(\-F\s[^\s]*\s)/g;
-                         @helpers = $line =~ m/(\S*TestHelper\S*\.(?:swift|m))\s/g;
-                         my @testFilePath = $line =~ m/\s(\S*\/\Q$testCounterpartFile\E)/;
-                         my $testFilePath = join(" ", @testFilePath);
-                         print "!!OOO: $testFilePath\n";
-                        my $frameworksLine = join(" ", @frameworks);
-                         #print "!!PP: $frameworksLine\n";
-                         push @helpers, $testFilePath;
-                        my $helpers = join(" ", @helpers);
-                        print "!!HH: $helpers\n";
-
-                        $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
-                        $testAppended = 1;
+                    if ( my($swiftdepspath) = $line =~ /(\S*)\/[^\/]*\.swiftdeps\s/){
+                        if ($swiftdepspath =~ /$testModulesRegEx/) {
+                            push @swiftdeps, $swiftdepspath;
+                        }
                     }
-                    my @newResources = $line =~ m/CpResource\s([^\s]*)/g;
-                    push (@resources, @newResources);
+
+
+                    
                 }
             }
-            print "!! Count: $count\n";
             my $assets = join(", ", @resources);
-                                # print "!!R: $testAppended + $appended\n";
-            # print "!!R3: $assets\n";
+
+
+
+            # compile tests
+            local $/ = "\n";
+            my $swiftDepsPaths = join (" ", uniq @swiftdeps);
+            my $updated = join ("\\|", @referencesUpdated);
+            my $findDepsCmd = "grep -rle \"$updated\" --include=\"*.swiftdeps\" $swiftDepsPaths\n";
+            print "!! COMMAND: $findDepsCmd\n";
+            my @outputFind = `$findDepsCmd`;    
+            chomp @outputFind;
+            
+            
+
+            my @testCounterpartFiles = ();
+            foreach my $lineFind (@outputFind)
+            {
+                if ( my ($testFileName) = $lineFind =~ /([^\/]*)\.swiftdeps/ ){
+                    if ($testFileName ne $fileName){
+                        my $testCounterpartSingleFile = "$testFileName\.swift";
+                        # print "!!New Test: $testCounterpartFile\n";
+                        push (@testCounterpartFiles, "$testCounterpartSingleFile|\Q$testCounterpartSingleFile\E");
+                    }
+                }
+            }
+            $testCounterpartFile = join("|", @testCounterpartFiles);
+            print "!!Counter: $testCounterpartFile\n";
+            local $/ = "\r";
+
+
+            if ($testCounterpartFile ne ""){
+                my $LOG3 = IO::Uncompress::Gunzip->new( $log) or die "IO::Uncompress::Gunzip failed: $GunzipError\n";
+                while ( my $line = <$LOG3> ) {
+                    if ( index( $line, " $arch" ) != -1 &&
+                            (my ($fileName) = $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
+                                    $isSwift ? " -primary-file ": " -c "
+                                ]}\S*\/($testCounterpartFile|\Q$testCounterpartFile\E)! )
+                                ) {
+                            $testCounterpartLearnt = $line;
+                            # print "!!EE: $testCounterpartLearnt\n";
+                             my @frameworks = $line =~ m/(\-F\s[^\s]*\s)/g;
+                            # print "!!EE: $testCounterpartLearnt\n";
+                             my @testFilePath = $line =~ m/\s(\S*\/\Q$fileName\E)/;
+                             my $testFilePath = join(" ", @testFilePath);
+                             print "!!OOO: $testFilePath\n";
+                            my $frameworksLine = join(" ", @frameworks);
+                             print "!!PP: $frameworksLine\n";
+                             push @helpers, $testFilePath;
+                            my $helpers = join(" ", @helpers);
+                            print "!!HH: $helpers\n";
+
+                            $learnt =~ s/\-F\s/$helpers $frameworksLine \-F /;
+                            $testAppended = 1;
+                        }
+                        my @newResources = $line =~ m/CpResource\s([^\s]*)/g;
+                        push (@resources, @newResources);
+                }
+                close LOG3;
+            }
+
+
             last FOUND if $appended == 1;
             @resources = ();
         }
@@ -792,3 +851,31 @@ system "touch $injectionCountFileName";
 my $injectionCount = (loadFile( $injectionCountFileName )||0) + 1;
 saveFile( $injectionCountFileName, $injectionCount );
 print "!!$injectionCount injections performed so far.\n";
+
+
+
+
+
+
+
+###########  Utils
+
+
+sub get_swiftdeps {
+    local $/ = "\n";
+    my @nominals = ();
+    my $filename = $_[0];
+    my $group = $_[1];
+    open (my $fh," <:raw",  $filename);
+    my $section = "";
+    while (my $line = <$fh>) {
+        if ( (my($newSection) = $line =~ /(.*)\:/) ) {
+            last if $section eq $group;
+            $section = $newSection;
+        } elsif ($section eq $group) {
+           push (@nominals, $line =~ /\"(.*)\"/); 
+        }
+    }
+    close $fh;
+  return @nominals;
+}
