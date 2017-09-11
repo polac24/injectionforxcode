@@ -22,6 +22,7 @@ my $bundleProjectFile = "$InjectionBundle/InjectionBundle.xcodeproj/project.pbxp
 my $bundleProjectSource = -f $bundleProjectFile && loadFile( $bundleProjectFile );
 my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
 my $isSwift = $selectedFile =~ /\.swift$/;
+my $isUnitTest = 0;
 
 use utf8;
 utf8::upgrade($selectedFile);
@@ -237,6 +238,38 @@ if ( !$learnt ) {
         local $/ = "\r";
     FOUND:
         foreach my $log (@logs) {
+
+            #
+            # Find if any XCTest-included module was built for given build
+            #
+
+            my $isUnitTest = 0;
+            my $moduleName;
+            my @testModules = ();
+            if ($isSwift && !$isInterface){
+                open LOG_MODULES, "gunzip <'$log' 2>/dev/null |";
+                    while ( my $line = <LOG_MODULES> ) {
+                        if ($line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
+                                    $isSwift ? " -primary-file ": " -c "
+                                ]}(\Q$selectedFile\E|\Q$escaped\E)!
+                                && $line =~ /\-module\-name\s(\S*)\s/ ){
+                            $moduleName = $1;
+                        }
+                        if ($line =~ /\-framework\sXCTest\s/ && (my($testModule) = $line =~ /([^\/\s]*)\.swiftmodule\s/) ){
+                            push (@testModules, $testModule);
+                        }
+                    }
+                @testModules = grep !/A0InjTests|INTests/, @testModules;
+                $isUnitTest = (scalar @testModules > 0);
+                close LOG_MODULES;
+            }
+            print ("!!Module: $moduleName\n");
+            print ("!!Unit tests module $isUnitTest: @testModules\n");
+
+            #
+            # Find build commands
+            #
+
             open LOG, "gunzip <'$log' 2>/dev/null |";
             if ( $isInterface ) {
                 while ( my $line = <LOG> ) {
