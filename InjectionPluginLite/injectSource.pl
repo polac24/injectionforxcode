@@ -362,33 +362,35 @@ if ( !$learnt ) {
                 }
             }
             else {
+                my $learntToolchain = 0;
+                my $requiresFileList = 0;
                 while ( my $line = <LOG> ) {
                     if ( index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
                             ]}("$selectedFile"|\Q$escaped\E)! ) {
                         $learnt .= ($learnt?';;':'').$line;
-                        if ( $learnt =~ / -filelist / ) {
-                            while ( my $line = <LOG> ) {
-                                if ( my($filemap) = $line =~ / -output-file-map ([^ \\]+(?:\\ [^ \\]+)*) / ) {
-                                    $filemap =~ s/\\//g;
-                                    my $file_handle = IO::File->new( "< $filemap" )
-                                        || error "Could not open filemap '$filemap'";
-                                    my $json_text = join'', $file_handle->getlines();
-                                    my $json_map = decode_json( $json_text, { utf8  => 1 } );
-                                    my $filelist = "$InjectionBundle/filelist.txt";
-                                    $filelist = "$projRoot/$filelist" if $filelist !~ m@^/@;
-                                    my $swift_sources = join "\n", keys %$json_map;
-                                    IO::File->new( "> $filelist" )->print( $swift_sources );
-                                    $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
-                                    last FOUND;
-                                }
-                            }
-                            error "Could not locate filemap";
+                        $learntToolchain = 1;
+                        $requiresFileList = $learnt =~ / -filelist /;
+                    }
+                    if ( $requiresFileList ) {
+                        if ( my($filemap) = $line =~ / -output-file-map ([^ \\]+(?:\\ [^ \\]+)*) / ) {
+                            $requiresFileList = 0;
+                            $filemap =~ s/\\//g;
+                            my $file_handle = IO::File->new( "< $filemap" )
+                                || error "Could not open filemap '$filemap'";
+                            my $json_text = join'', $file_handle->getlines();
+                            my $json_map = decode_json( $json_text, { utf8  => 1 } );
+                            my $filelist = "$InjectionBundle/filelist.txt";
+                            $filelist = "$projRoot/$filelist" if $filelist !~ m@^/@;
+                            my $swift_sources = join "\n", keys %$json_map;
+                            IO::File->new( "> $filelist" )->print( $swift_sources );
+                            $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
                         }
-                        last FOUND;
                     }
                 }
+                error "Could not locate filemap" if $requiresFileList && $learntToolchain;
+                last FOUND if $learntToolchain;
             }
         }
 
