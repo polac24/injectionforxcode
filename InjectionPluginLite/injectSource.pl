@@ -338,6 +338,7 @@ if ( !$learnt ) {
                     # exposed API in a selected file
                     my @referencesUpdated = get_swiftdeps($swiftDepsFile, "provides-nominal");
                     @unitTestFiles = get_swiftdeps_references(\@referencesUpdated, \@swiftDepsPaths);
+                    @unitTestFiles = grep !/\Q\Q$filename\E\E/, @unitTestFiles; 
                 }
                 close LOG_MODULES;
             }
