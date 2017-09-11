@@ -26,6 +26,8 @@ my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
 my $isSwift = $selectedFile =~ /\.swift$/;
 my $isUnitTest = 0;
 my @unitTestLearnt = ();
+my $rebuildModuleLearnt = 0;
+my $updateSwiftModuleLearnt = 0;
 
 use utf8;
 utf8::upgrade($selectedFile);
@@ -295,6 +297,8 @@ if ( !$learnt ) {
             my $moduleName;
             my @unitTestFiles = ();
             @unitTestLearnt = ();
+            $rebuildModuleLearnt = 0;
+            $updateSwiftModuleLearnt = 0;
             if ($isSwift && !$isInterface){
                 my @swiftDepsPaths;
                 my @testModules = ();
@@ -400,6 +404,13 @@ if ( !$learnt ) {
 
                         push (@unitTestLearnt, $line);
                     }
+
+                    if ($isUnitTest && !$rebuildModuleLearnt  && $line =~ /swiftc\s.*\-module\-name\s$moduleName\s/ )  {
+                        $rebuildModuleLearnt = "$line";
+                    }
+                    if ($isUnitTest && !$updateSwiftModuleLearnt && $line =~ /ditto\s\-rsrc.*\/$moduleName\.swiftmodule\/$arch.swiftmodule/ )  {
+                        $updateSwiftModuleLearnt = $line;
+                    }
                 }
                 error "Could not locate filemap" if $requiresFileList && $learntToolchain;
                 last FOUND if $learntToolchain;
@@ -476,6 +487,24 @@ int injectionHook() {
 CODE
 
 $changesSource->close();
+
+############################################################################
+#
+# Rebuild swift files for linker (swiftmodule dependencies could change
+# due to unit tests dependencies).
+#
+
+if ($rebuildModuleLearnt){
+    foreach my $out (`time $rebuildModuleLearnt 2>&1`) {
+        print rtfEscape( $out );
+    }
+}
+if ($updateSwiftModuleLearnt){
+    foreach my $out (`time $updateSwiftModuleLearnt 2>&1`) {
+        print rtfEscape( $out );
+    }
+}
+
 
 ############################################################################
 #
