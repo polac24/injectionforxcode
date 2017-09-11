@@ -293,6 +293,7 @@ if ( !$learnt ) {
             my $isUnitTest = 0;
             my $moduleName;
             my @unitTestFiles = ();
+            my @unitTestLearnt = ();
             if ($isSwift && !$isInterface){
                 my @swiftDepsPaths;
                 my @testModules = ();
@@ -337,6 +338,7 @@ if ( !$learnt ) {
             }
             print ("!!Module: $moduleName\n");
             print ("!!unitTestFiles: @unitTestFiles\n");
+            my $unitTestFilesRegex = join ("|", @unitTestFiles);
 
             #
             # Find build commands
@@ -387,6 +389,15 @@ if ( !$learnt ) {
                             IO::File->new( "> $filelist" )->print( $swift_sources );
                             $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
                         }
+                    }
+                    if ((scalar @unitTestFiles) > 0 && index( $line, " $arch" ) != -1 &&
+                        $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
+                                $isSwift ? " -primary-file ": " -c "
+                            ]}\S*\/($unitTestFilesRegex)!){
+                        @unitTestFiles = grep !/\Q\Q$1\E\E/, @unitTestFiles;
+                        $unitTestFilesRegex = join ("|", @unitTestFiles);
+
+                        push (@unitTestLearnt, $line);
                     }
                 }
                 error "Could not locate filemap" if $requiresFileList && $learntToolchain;
