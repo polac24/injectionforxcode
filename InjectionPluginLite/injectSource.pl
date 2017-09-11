@@ -25,6 +25,7 @@ my $bundleProjectSource = -f $bundleProjectFile && loadFile( $bundleProjectFile 
 my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
 my $isSwift = $selectedFile =~ /\.swift$/;
 my $isUnitTest = 0;
+my @unitTestLearnt = ();
 
 use utf8;
 utf8::upgrade($selectedFile);
@@ -290,10 +291,10 @@ if ( !$learnt ) {
             # Find if any XCTest-included module was built for given build
             #
 
-            my $isUnitTest = 0;
+            $isUnitTest = 0;
             my $moduleName;
             my @unitTestFiles = ();
-            my @unitTestLearnt = ();
+            @unitTestLearnt = ();
             if ($isSwift && !$isInterface){
                 my @swiftDepsPaths;
                 my @testModules = ();
@@ -505,6 +506,25 @@ if ( $learnt ) {
         print rtfEscape( $out );
     }
     error "Learnt compile failed" if $?;
+
+    # compile unit tests
+    for my $i (0..$#unitTestLearnt){
+        my $line = $unitTestLearnt[$i];
+        my $objTest = "$arch/injecting_class$i.o";
+        $obj .= " $objTest ";
+        $line =~ s@( -o ).*$@$1$InjectionBundle/$objTest@ or die "Could not locate object file in: $line";
+        $line =~ s/([()])/\\$1/g;
+        rtfEscape( my $lout = $line );
+        print "Line compile: $compileHighlight $lout\n";
+
+        foreach my $out (`time $line 2>&1`) {
+            print "!!$out";
+            print rtfEscape( $out );
+        }
+        error "Learnt unit test compile failed" if $?;
+    }
+
+    #
 
     #if ( $isSwift ) {
         my ($toolchain) = $learnt =~ m#(@{[$xcodeApp||'/Applications/Xcode']}.*?\.xctoolchain)/#;
