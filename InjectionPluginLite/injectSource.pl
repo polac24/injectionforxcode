@@ -14,6 +14,8 @@ use FindBin;
 use lib $FindBin::Bin;
 use JSON::PP;
 use common;
+use List::MoreUtils qw(uniq);
+
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";
 my $errorHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red255\\green255\\blue130;}\\cb2";
@@ -54,6 +56,51 @@ sub mtime {
     my ($file) = @_;
     return (stat $file)[9]||0;
 }
+
+# findls all entries defined in *.swiftdeps for a given
+sub get_swiftdeps {
+    local $/ = "\n";
+    my @nominals = ();
+    my $filename = $_[0];
+    my $group = $_[1];
+    open (my $fh," <:raw",  $filename);
+    my $section = "";
+    while (my $line = <$fh>) {
+        if ( (my($newSection) = $line =~ /(.*)\:/) ) {
+            last if $section eq $group;
+            $section = $newSection;
+        } elsif ($section eq $group) {
+           push (@nominals, $line =~ /\"(.*)\"/); 
+        }
+    }
+    close $fh;
+  return @nominals;
+}
+
+sub get_swiftdeps_references {
+    local $/ = "\n";
+    my $referencesToFindRef = $_[0];
+    my $swiftDepsPathsReg = $_[1];
+    my @referencesToFind = @{$referencesToFindRef };
+    my @swiftDepsPaths = @{$swiftDepsPathsReg};
+                    
+    my $referencesUpdatedRegex = join ("\\|", @referencesToFind);
+    my $allSwiftDepsPaths = join (" ", uniq @swiftDepsPaths);
+    my $findDepsCmd = "grep -rle \"$referencesUpdatedRegex\" --include=\"*.swiftdeps\" $allSwiftDepsPaths\n";
+    my @outputFind = `$findDepsCmd`;    
+    chomp @outputFind;
+
+    my @testCounterpartFiles = ();
+    foreach my $lineFind (@outputFind) {
+        if ( my ($testFileName) = $lineFind =~ /([^\/]*)\.swiftdeps/ ){
+            my $testCounterpartSingleFile = "$testFileName\.swift";
+            # print "!!New Test: $testCounterpartFile\n";
+            push (@testCounterpartFiles, "\Q$testCounterpartSingleFile\E");
+        }
+    }
+    return @testCounterpartFiles;
+}
+
 
 if ( !$executable ) {
     print "Application is not connected.\n";
@@ -245,26 +292,51 @@ if ( !$learnt ) {
 
             my $isUnitTest = 0;
             my $moduleName;
-            my @testModules = ();
+            my @unitTestFiles = ();
             if ($isSwift && !$isInterface){
+                my @swiftDepsPaths;
+                my @testModules = ();
+                my $swiftDepsFile;
                 open LOG_MODULES, "gunzip <'$log' 2>/dev/null |";
                     while ( my $line = <LOG_MODULES> ) {
                         if ($line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                     $isSwift ? " -primary-file ": " -c "
                                 ]}(\Q$selectedFile\E|\Q$escaped\E)!
-                                && $line =~ /\-module\-name\s(\S*)\s/ ){
-                            $moduleName = $1;
+                                && (my ($swiftDeps) = $line =~ /(\S*\.swiftdeps)\s/) 
+                                && (my ($module) = $line =~ /\-module\-name\s(\S*)\s/) ){
+                            $moduleName = $module;
+                            $swiftDepsFile = $swiftDeps;
                         }
+
+                        # look for all modules with XCTest
                         if ($line =~ /\-framework\sXCTest\s/ && (my($testModule) = $line =~ /([^\/\s]*)\.swiftmodule\s/) ){
+                            $isUnitTest = 1;
                             push (@testModules, $testModule);
                         }
+
+                        # look for all paths that contain *.swiftdeps files
+                        if (index( $line, ".swiftdeps" ) != -1 && (my($swiftdepspath) = $line =~ /(\S*)\/[^\/]*\.swiftdeps\s/) ){
+                            push (@swiftDepsPaths, $swiftdepspath);
+                        }
                     }
+                # get rid of frameworks to freeze unit test
                 @testModules = grep !/A0InjTests|INTests/, @testModules;
-                $isUnitTest = (scalar @testModules > 0);
+
+                # look swiftdeps only in directories with unit tests
+                my $testsRegex = join ("|", @testModules);
+                @swiftDepsPaths = grep /$testsRegex/, uniq @swiftDepsPaths;
+
+
+                # find all additional test files to inject
+                if ($isUnitTest){
+                    # exposed API in a selected file
+                    my @referencesUpdated = get_swiftdeps($swiftDepsFile, "provides-nominal");
+                    @unitTestFiles = get_swiftdeps_references(\@referencesUpdated, \@swiftDepsPaths);
+                }
                 close LOG_MODULES;
             }
             print ("!!Module: $moduleName\n");
-            print ("!!Unit tests module $isUnitTest: @testModules\n");
+            print ("!!unitTestFiles: @unitTestFiles\n");
 
             #
             # Find build commands
