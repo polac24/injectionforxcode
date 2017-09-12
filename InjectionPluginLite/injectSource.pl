@@ -26,6 +26,7 @@ my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
 my $isSwift = $selectedFile =~ /\.swift$/;
 my $isUnitTest = 0;
 my @unitTestLearnt = ();
+my @unitTestResources = ();
 my $rebuildModuleLearnt = 0;
 my $updateSwiftModuleLearnt = 0;
 
@@ -296,6 +297,7 @@ if ( !$learnt ) {
             $isUnitTest = 0;
             my $moduleName;
             my @unitTestFiles = ();
+            @unitTestResources = ();
             @unitTestLearnt = ();
             $rebuildModuleLearnt = 0;
             $updateSwiftModuleLearnt = 0;
@@ -324,6 +326,11 @@ if ( !$learnt ) {
                         if (index( $line, ".swiftdeps" ) != -1 && (my($swiftdepspath) = $line =~ /(\S*)\/[^\/]*\.swiftdeps\s/) ){
                             push (@swiftDepsPaths, $swiftdepspath);
                         }
+
+                        # look for all resources that should be appended to injection bundle
+                        if ($isUnitTest && (my ($testResource ) = $line =~ /CpResource\s([^\s]*)\s/) ){
+                            push (@unitTestResources, $testResource);
+                        }
                     }
                 # get rid of frameworks to freeze unit test
                 @testModules = grep !/A0InjTests|INTests/, @testModules;
@@ -331,7 +338,7 @@ if ( !$learnt ) {
                 # look swiftdeps only in directories with unit tests
                 my $testsRegex = join ("|", @testModules);
                 @swiftDepsPaths = grep /$testsRegex/, uniq @swiftDepsPaths;
-
+                @unitTestResources = uniq @unitTestResources;
 
                 # find all additional test files to inject
                 if ($isUnitTest && $swiftDepsFile){
@@ -538,7 +545,7 @@ if ( $learnt ) {
     }
     error "Learnt compile failed" if $?;
 
-    # compile unit tests
+    # Compile corresponding unit tests
     for my $i (0..$#unitTestLearnt){
         my $line = $unitTestLearnt[$i];
         my $objTest = "$arch/injecting_class$i.o";
@@ -730,6 +737,11 @@ if ( $flags & $INJECTION_STORYBOARD ) {
         }
     }
     close NIBS;
+}
+
+if ($isUnitTest &&  (scalar @unitTestResources) > 0 ){
+    my $copyCommand = "cd $projRoot && cp -f @unitTestResources \"$bundlePath\" || true";
+    0 == system $copyCommand;
 }
 
 $identity = "-" if !$isDevice;
