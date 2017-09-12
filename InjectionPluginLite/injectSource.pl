@@ -290,7 +290,7 @@ if ( !$learnt ) {
         foreach my $log (@logs) {
 
             #
-            # Find if any XCTest-included module was built for given build
+            # Find if any XCTest-included module was built for a given build
             #
 
             $isUnitTest = 0;
@@ -302,7 +302,7 @@ if ( !$learnt ) {
             if ($isSwift && !$isInterface){
                 my @swiftDepsPaths;
                 my @testModules = ();
-                my $swiftDepsFile;
+                my $swiftDepsFile = 0;
                 open LOG_MODULES, "gunzip <'$log' 2>/dev/null |";
                     while ( my $line = <LOG_MODULES> ) {
                         if ($line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
@@ -334,12 +334,13 @@ if ( !$learnt ) {
 
 
                 # find all additional test files to inject
-                if ($isUnitTest){
+                if ($isUnitTest && $swiftDepsFile){
                     # exposed API in a selected file
                     my @referencesUpdated = get_swiftdeps($swiftDepsFile, "provides-nominal");
                     @unitTestFiles = get_swiftdeps_references(\@referencesUpdated, \@swiftDepsPaths);
                     @unitTestFiles = grep !/\Q\Q$filename\E\E/, @unitTestFiles; 
                 }
+                $isUnitTest = (scalar @unitTestFiles > 0);
                 close LOG_MODULES;
             }
             print ("!!Module: $moduleName\n");
