@@ -535,6 +535,14 @@ if ( $learnt ) {
         or die "Could not locate object file in: $learnt";
     ###$learnt =~ s/( -DDEBUG\S* )/$1-DINJECTION_BUNDLE /;
 
+    # Disable Code coverage for injection file
+    # swift
+    $learnt =~ s/\-profile\-generate//g;
+    $learnt =~ s/\-profile\-coverage\-mapping//g;
+    # objc
+    $learnt =~ s/\-fprofile\-instr\-generate//g;
+    $learnt =~ s/\-fcoverage\-mapping//g;
+
     $learnt =~ s/([()])/\\$1/g;
     rtfEscape( my $lout = $learnt );
     print "Learnt compile: $compileHighlight $lout\n";
@@ -552,6 +560,11 @@ if ( $learnt ) {
         my $objTest = "$arch/injecting_class$i.o";
         $obj .= " $objTest ";
         $line =~ s@( -o ).*$@$1$InjectionBundle/$objTest@ or die "Could not locate object file in: $line";
+        
+        # Disable Code coverage for unit test file
+        $line =~ s/\-profile\-generate//g;
+        $line =~ s/\-profile\-coverage\-mapping//g;
+        
         $line =~ s/([()])/\\$1/g;
         rtfEscape( my $lout = $line );
         print "Line compile: $compileHighlight $lout\n";
