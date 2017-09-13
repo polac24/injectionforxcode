@@ -15,6 +15,7 @@ use lib $FindBin::Bin;
 use JSON::PP;
 use common;
 use List::MoreUtils qw(uniq);
+use Cwd qw(abs_path);
 
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";
@@ -739,9 +740,12 @@ if ( $flags & $INJECTION_STORYBOARD ) {
     close NIBS;
 }
 
+# Link all resources as symbolic link to a bundle 
 if ($isUnitTest &&  (scalar @unitTestResources) > 0 ){
-    my $copyCommand = "cd $projRoot && cp -f @unitTestResources \"$bundlePath\" || true";
-    0 == system $copyCommand;
+    foreach my $unitTestResource (@unitTestResources) {
+        my $copyCommand = "ln -sf @{[abs_path($unitTestResource)]} \"$bundlePath\" || true";
+        0 == system $copyCommand;
+    }
 }
 
 $identity = "-" if !$isDevice;
