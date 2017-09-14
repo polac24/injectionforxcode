@@ -62,36 +62,37 @@ sub mtime {
     return (stat $file)[9]||0;
 }
 
-# findls all entries defined in *.swiftdeps for a given
+# findls all entries defined in *.swiftdeps for a given group
 sub get_swiftdeps {
     local $/ = "\n";
-    my @nominals = ();
+    my @groupValues = ();
     my $filename = $_[0];
-    my $group = $_[1];
+    my $groupName = $_[1];
     open (my $fh," <:raw",  $filename);
     my $section = "";
     while (my $line = <$fh>) {
         if ( (my($newSection) = $line =~ /(.*)\:/) ) {
-            last if $section eq $group;
+            last if $section eq $groupName;
             $section = $newSection;
-        } elsif ($section eq $group) {
-           push (@nominals, $line =~ /\"(.*)\"/); 
+        } elsif ($section eq $groupName) {
+           push (@groupValues, $line =~ /\-\s*(.*)$/); 
         }
     }
     close $fh;
-  return @nominals;
+  return @groupValues;
 }
 
 sub get_swiftdeps_references {
     local $/ = "\n";
     my $referencesToFindRef = $_[0];
     my $swiftDepsPathsReg = $_[1];
-    my @referencesToFind = @{$referencesToFindRef };
+    my @referencesToFind = @{$referencesToFindRef};
     my @swiftDepsPaths = @{$swiftDepsPathsReg};
-                    
-    my $referencesUpdatedRegex = join ("\\|", @referencesToFind);
+    return () if (scalar @referencesToFind == 0);
+    
+    my $referencesUpdatedRegex = join ("|", @referencesToFind);
     my $allSwiftDepsPaths = join (" ", uniq @swiftDepsPaths);
-    my $findDepsCmd = "grep -rle \"$referencesUpdatedRegex\" --include=\"*.swiftdeps\" $allSwiftDepsPaths\n";
+    my $findDepsCmd = "grep -rle \"\Q$referencesUpdatedRegex\E\" --include=\"*.swiftdeps\" $allSwiftDepsPaths\n";
     my @outputFind = `$findDepsCmd`;    
     chomp @outputFind;
 
@@ -344,7 +345,10 @@ if ( !$learnt ) {
                 # find all additional test files to inject
                 if ($isUnitTest && $swiftDepsFile){
                     # exposed API in a selected file
-                    my @referencesUpdated = get_swiftdeps($swiftDepsFile, "provides-nominal");
+                    my @nominalReferences = get_swiftdeps($swiftDepsFile, "provides-nominal");
+                    my @memberReferences = get_swiftdeps($swiftDepsFile, "provides-member");
+                    my @referencesUpdated = (@nominalReferences, @memberReferences);
+                    print "!!REF: @referencesUpdated\n";
                     @unitTestFiles = get_swiftdeps_references(\@referencesUpdated, \@swiftDepsPaths);
                     @unitTestFiles = grep !/\Q\Q$filename\E\E/, @unitTestFiles; 
                 }
