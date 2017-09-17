@@ -100,7 +100,6 @@ sub get_swiftdeps_references {
     foreach my $lineFind (@outputFind) {
         if ( my ($testFileName) = $lineFind =~ /([^\/]*)\.swiftdeps/ ){
             my $testCounterpartSingleFile = "$testFileName\.swift";
-            # print "!!New Test: $testCounterpartFile\n";
             push (@testCounterpartFiles, "\Q$testCounterpartSingleFile\E");
         }
     }
@@ -348,15 +347,12 @@ if ( !$learnt ) {
                     my @nominalReferences = get_swiftdeps($swiftDepsFile, "provides-nominal");
                     my @memberReferences = get_swiftdeps($swiftDepsFile, "provides-member");
                     my @referencesUpdated = (@nominalReferences, @memberReferences);
-                    print "!!REF: @referencesUpdated\n";
                     @unitTestFiles = get_swiftdeps_references(\@referencesUpdated, \@swiftDepsPaths);
                     @unitTestFiles = grep !/\Q\Q$filename\E\E/, @unitTestFiles; 
                 }
                 $isUnitTest = (scalar @unitTestFiles > 0);
                 close LOG_MODULES;
             }
-            print ("!!Module: $moduleName\n");
-            print ("!!unitTestFiles: @unitTestFiles\n");
             my $unitTestFilesRegex = join ("|", @unitTestFiles);
 
             #
@@ -574,7 +570,6 @@ if ( $learnt ) {
         print "Line compile: $compileHighlight $lout\n";
 
         foreach my $out (`time $line 2>&1`) {
-            print "!!$out";
             print rtfEscape( $out );
         }
         error "Learnt unit test compile failed" if $?;
