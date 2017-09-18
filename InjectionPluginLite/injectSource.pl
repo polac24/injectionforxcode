@@ -375,6 +375,7 @@ if ( !$learnt ) {
             else {
                 my $learntToolchain = 0;
                 my $requiresFileList = 0;
+                my $fileListUnitTests = 0;
                 while ( my $line = <LOG> ) {
                     if ( index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
@@ -406,7 +407,19 @@ if ( !$learnt ) {
                         @unitTestFiles = grep !/\Q\Q$1\E\E/, @unitTestFiles;
                         $unitTestFilesRegex = join ("|", @unitTestFiles);
 
-                        push (@unitTestLearnt, $line);
+                        my $lineLearntUnit = $line;
+                        if (index ($lineLearntUnit, "-filelist") != -1){
+                            my $filelist = "$InjectionBundle/filelist_units.txt";
+                            if (!$fileListUnitTests){
+                                my $dgphPath = $lineLearntUnit =~ /\s(\S*)\/[^\s\/]+files\.hmap/;
+                                0 == system "strings $1/dgph | grep -oE \"\\-primary\\-file\\s(\\S*)\" | sed 's/\\-primary\\-file //g' > $filelist"
+                                    or die "Interface compile failed";
+                                $fileListUnitTests = 1; 
+                            }
+                            $lineLearntUnit =~ s/( -filelist )(\S+)()/$1$filelist$3/;
+                        } 
+
+                        push (@unitTestLearnt, $lineLearntUnit);
                     }
 
                     if ($isUnitTest && !$rebuildModuleLearnt  && $line =~ /swiftc\s.*\-module\-name\s$moduleName\s/ )  {
