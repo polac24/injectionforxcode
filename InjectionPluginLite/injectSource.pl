@@ -318,13 +318,11 @@ if ( !$learnt ) {
                         }
 
                         # look for all modules with XCTest
-                        if ($line =~ /\-framework\sXCTest\s/ && (my($testModule) = $line =~ /([^\/\s]*)\.swiftmodule\s/) ){
+                        if ($line =~ /\-framework\sXCTest\s/ && 
+                            (my($testModule) = $line =~ /([^\/\s]*)\.swiftmodule\s/) &&
+                            (my($swiftdepspath) = $line =~ /\s(\S*)\/[^\/]+dependency_info\.dat/) ){
                             $isUnitTest = 1;
                             push (@testModules, $testModule);
-                        }
-
-                        # look for all paths that contain *.swiftdeps files
-                        if (index( $line, ".swiftdeps" ) != -1 && (my($swiftdepspath) = $line =~ /(\S*)\/[^\/]*\.swiftdeps\s/) ){
                             push (@swiftDepsPaths, $swiftdepspath);
                         }
 
@@ -334,11 +332,7 @@ if ( !$learnt ) {
                         }
                     }
                 # get rid of frameworks to freeze unit test
-                @testModules = grep !/A0InjTests|INTests/, @testModules;
-
-                # look swiftdeps only in directories with unit tests
-                my $testsRegex = join ("|", @testModules);
-                @swiftDepsPaths = grep /$testsRegex/, uniq @swiftDepsPaths;
+                @testModules = grep !/InjectionTDD/, @testModules;
                 @unitTestResources = uniq @unitTestResources;
 
                 # find all additional test files to inject
