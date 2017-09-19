@@ -16,7 +16,7 @@ use JSON::PP;
 use common;
 use List::MoreUtils qw(uniq);
 use Cwd qw(abs_path);
-
+use Time::HiRes qw( time );
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";
 my $errorHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red255\\green255\\blue130;}\\cb2";
@@ -476,9 +476,10 @@ print "!! -----------------------\n";
                     }
 
                      if (  index( $line, "/clang " ) != -1 && index( $line, " $arch" ) != -1 &&
-                           index( $line, "-framework XCTest" ) != -1 && 
-                           index( $line, "-bundle_loader " ) != -1
+                           index( $line, "-framework XCTest" ) != -1 
+                           # index( $line, "-bundle_loader " ) != -1
                          ){
+                            print ("!!CLANG1: $line\n");
                         push (@unitTestsClangCommands, $line);
                     }
 
@@ -518,7 +519,7 @@ print "!! -----------------------\n";
                 while (my ($key, $value) = each(%hash)) {
                     print "!!Module: $key\n";
                     my $files = $value->{files};
-                    print "!!files: @$files\n";
+                    # print "!!files: @$files\n";
                     my $swiftcLine = $value->{swiftc};
                     my $isUnitTestModule = $value->{isUnitTestModule};
 
@@ -552,6 +553,10 @@ print "!! -----------------------\n";
                     my @inject_unit_files = @$inject_unit_filesRef;
                     next if scalar @inject_unit_files == 0;
 
+                    my $filesRef = $value->{files};
+                    my @files = @$filesRef;
+                    my $filesToCommand = join(" ", @files);
+
                     my $swiftcLine = $value->{swiftc};
                     my $swiftcOutputString = `$swiftcLine 2>&1 | sed -e 's/^[0-9]*\$/,/g'`;
                     my $swiftcOutput = decode_json( "[{}".$swiftcOutputString."]", { utf8  => 1 } );
@@ -562,7 +567,9 @@ print "!! -----------------------\n";
                             print "!! P: $report->{kind}, $report->{name}, $input\n";
                             my $injectionCommand = $report->{command};
                             # print "!! ReqbuildTest: $injectionCommand\n";
-                           push (@unitTestLearnt, $injectionCommand);
+                            my $nonFileCommand = $injectionCommand;
+                            $nonFileCommand =~ s/\-filelist\s\S*\s/ $filesToCommand /;
+                           push (@unitTestLearnt, $nonFileCommand);
                         }
                     }
 
