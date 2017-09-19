@@ -106,6 +106,69 @@ sub get_swiftdeps_references {
     return @testCounterpartFiles;
 }
 
+sub get_swiftdeps_references2 {
+    local $/ = "\n";
+    my $referencesToFindRef = $_[0];
+    my $swift_matchRef = $_[1];
+    my @referencesToFind = @{$referencesToFindRef};
+    my %swift_match = %{$swift_matchRef};
+    return () if (scalar @referencesToFind == 0);
+    
+    my $referencesUpdatedRegex = join ("|", @referencesToFind);
+    while (my ($moduleName, $moduleHash) = each(%swift_match)) {
+        if ($moduleHash->{isUnitTestModule}){
+            my @testCounterpartFiles = ();
+            my $moduleDepsPath = $moduleHash->{outputPath};
+            my $findDepsCmd = "grep -rle \"\Q$referencesUpdatedRegex\E\" --include=\"*.swiftdeps\" $moduleDepsPath\n";
+            my @outputFind = `$findDepsCmd`;    
+            chomp @outputFind;
+
+            foreach my $lineFind (@outputFind) {
+                if ( my ($testFileName) = $lineFind =~ /([^\/]*)\.swiftdeps/ ){
+                    my @allFiles = @{$moduleHash->{files}};
+                    my @file = grep(/\/$testFileName\.swift$/i, @allFiles);
+                    push (@testCounterpartFiles, @file);
+                }
+            }
+            if (scalar @testCounterpartFiles > 0){
+                $moduleHash->{update_unit_files} = \@testCounterpartFiles;
+            }
+        }
+    }
+    return %swift_match;
+}
+
+##### Parses Both swiftc and clang commands into comprehensive hash
+sub match_swift_clang_commands{
+    my $swiftCCommandsRef = $_[0];
+    my $clangCommandsRef = $_[1];
+    my @swiftCCommands = @{$swiftCCommandsRef};
+    my @clangCommands = @{$clangCommandsRef};
+    my %modules;
+
+    foreach my $swiftCCommand (@swiftCCommands){
+        my ($moduleName) = ($swiftCCommand =~ m/\-module\-name\s(\S*)\s/);
+        my @allFiles = ($swiftCCommand =~ /(\S*\.swift)\s/g);
+        $modules{$moduleName} = {} if !exists $modules{$moduleName};
+        
+        $modules{$moduleName}{files} = \@allFiles;
+        $modules{$moduleName}{swiftc} = $swiftCCommand;
+    }
+
+    foreach my $clangCommand (@clangCommands){
+        my ($moduleName) = ($clangCommand =~ m/([^\/\s]*)\.swiftmodule\s/);
+        my ($swiftOutputPath) = ($clangCommand =~ m/\s(\S*)\/([^\/\s]*)\.swiftmodule\s/);
+        my $isUnitTestModule = $clangCommand =~ /\-framework\sXCTest\s/;
+        $modules{$moduleName} = {} if !exists $modules{$moduleName};
+
+        $modules{$moduleName}{isUnitTestModule} = $isUnitTestModule;
+        $modules{$moduleName}{outputPath} = $swiftOutputPath;
+        $modules{$moduleName}{clang} = $clangCommand;
+    }
+
+    return %modules;
+}
+
 
 if ( !$executable ) {
     print "Application is not connected.\n";
@@ -290,7 +353,7 @@ if ( !$learnt ) {
         local $/ = "\r";
     FOUND:
         foreach my $log (@logs) {
-
+print "!! -----------------------\n";
             #
             # Find if any XCTest-included module was built for a given build
             #
@@ -376,6 +439,8 @@ if ( !$learnt ) {
                 my $learntToolchain = 0;
                 my $requiresFileList = 0;
                 my $fileListUnitTests = 0;
+                my @swiftcCommands = ();
+                my @unitTestsClangCommands = ();
                 while ( my $line = <LOG> ) {
                     if ( index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
@@ -400,6 +465,23 @@ if ( !$learnt ) {
                             $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
                         }
                     }
+
+                    if ( $line =~ /\/swiftc\s/ &&
+                        (my ($localModuleName) = $line =~ /\-module\-name\s(\S*)\s/) ){
+                            if ($localModuleName ne "InjectionTDD"){
+                                my $swiftCLine = $line;
+                                $swiftCLine =~ s/^\s+|\s+$//g;
+                                push (@swiftcCommands, $swiftCLine);
+                            }
+                    }
+
+                     if (  index( $line, "/clang " ) != -1 && index( $line, " $arch" ) != -1 &&
+                           index( $line, "-framework XCTest" ) != -1 && 
+                           index( $line, "-bundle_loader " ) != -1
+                         ){
+                        push (@unitTestsClangCommands, $line);
+                    }
+
                     if ((scalar @unitTestFiles) > 0 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
@@ -419,7 +501,7 @@ if ( !$learnt ) {
                             $lineLearntUnit =~ s/( -filelist )(\S+)()/$1$filelist$3/;
                         } 
 
-                        push (@unitTestLearnt, $lineLearntUnit);
+                        #push (@unitTestLearnt, $lineLearntUnit);
                     }
 
                     if ($isUnitTest && !$rebuildModuleLearnt  && $line =~ /swiftc\s.*\-module\-name\s$moduleName\s/ )  {
@@ -429,6 +511,66 @@ if ( !$learnt ) {
                         $updateSwiftModuleLearnt = $line;
                     }
                 }
+                my %hash = match_swift_clang_commands(\@swiftcCommands, \@unitTestsClangCommands);
+                my @swiftDepsPaths2 = ();
+                my @unitTestFiles = ();
+                my @referencesUpdated = ();
+                while (my ($key, $value) = each(%hash)) {
+                    print "!!Module: $key\n";
+                    my $files = $value->{files};
+                    print "!!files: @$files\n";
+                    my $swiftcLine = $value->{swiftc};
+                    my $isUnitTestModule = $value->{isUnitTestModule};
+
+                    if (index ($swiftcLine, $selectedFile) != -1){
+                        ## module to rebuild
+                        # print ("!! REBuild: $swiftcLine\n");
+                        print ("!!NOW:\n");
+                        # Pack Swiftc output to single-readable json array
+                        my $swiftcOutputString = `$swiftcLine 2>&1 | sed -e 's/^[0-9]*\$/,/g'`;
+                        my $swiftcOutput = decode_json( "[{}".$swiftcOutputString."]", { utf8  => 1 } );
+                        for my $report ( @$swiftcOutput ) {
+                            my $inputs = $report->{inputs};
+                            if ( grep( /^\Q$selectedFile\E$/, @$inputs) ){
+                                print "!! $report->{kind}, $report->{name}, $report->{inputs}[0]\n";
+                                my $injectionCommand = $report->{command};
+                                my ($swiftDepsFile) = ($injectionCommand =~ /(\S*\.swiftdeps)\s/);
+
+                                my @nominalReferences = get_swiftdeps($swiftDepsFile, "provides-nominal");
+                                my @memberReferences = get_swiftdeps($swiftDepsFile, "provides-member");
+                                @referencesUpdated = (@nominalReferences, @memberReferences);
+                            }
+                        }
+                    }
+                }
+
+                my %unitTestFiles = get_swiftdeps_references2(\@referencesUpdated, \%hash);
+                while (my ($key, $value) = each(%unitTestFiles)) {
+                    next if !$value->{update_unit_files};
+
+                    my $inject_unit_filesRef = $value->{update_unit_files};
+                    my @inject_unit_files = @$inject_unit_filesRef;
+                    next if scalar @inject_unit_files == 0;
+
+                    my $swiftcLine = $value->{swiftc};
+                    my $swiftcOutputString = `$swiftcLine 2>&1 | sed -e 's/^[0-9]*\$/,/g'`;
+                    my $swiftcOutput = decode_json( "[{}".$swiftcOutputString."]", { utf8  => 1 } );
+                    for my $report ( @$swiftcOutput ) {
+                        ## TODO: depend on intersection between @inject_unit_files and $report->{inputs} 
+                        my $input = $report->{inputs}[0];
+                        if ( grep( /^\Q$input\E$/, @inject_unit_files) ){
+                            print "!! P: $report->{kind}, $report->{name}, $input\n";
+                            my $injectionCommand = $report->{command};
+                            # print "!! ReqbuildTest: $injectionCommand\n";
+                           push (@unitTestLearnt, $injectionCommand);
+                        }
+                    }
+
+                 }
+
+                # my @dd = @{%unitTestFiles->{"TestPlayTests"}->{update_unit_files}};
+                # print ("!! TF2: @dd\n");
+
                 error "Could not locate filemap" if $requiresFileList && $learntToolchain;
                 last FOUND if $learntToolchain;
             }
