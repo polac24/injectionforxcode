@@ -16,7 +16,6 @@ use JSON::PP;
 use common;
 use List::MoreUtils qw(uniq);
 use Cwd qw(abs_path);
-use Time::HiRes qw( time );
 use InjectUnitTests;
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";
@@ -319,7 +318,7 @@ if ( !$learnt ) {
                     }
                 }
 
-                if ($isSwift && (scalar @unitTestsClangCommands > 0)) {
+                if ($learntToolchain && $isSwift && (scalar @unitTestsClangCommands > 0)) {
                     @unitTestLearnt = InjectUnitTests::rebuild_project_and_find_unit_tests_commands($selectedFile, \@swiftcCommands, \@unitTestsClangCommands, \%copySwiftModuleCommands);
                 }
 
@@ -438,29 +437,8 @@ if ( $learnt ) {
     }
     error "Learnt compile failed" if $?;
 
-    # Compile corresponding unit tests
-    for my $i (0..$#unitTestLearnt){
-        my $line = $unitTestLearnt[$i];
-        my $objTest = "$arch/injecting_class$i.o";
-        $obj .= " $objTest ";
-        $line =~ s@( -o ).*$@$1$InjectionBundle/$objTest@ or die "Could not locate object file in: $line";
-        
-        # Disable Code coverage for unit test file
-        $line =~ s/\-profile\-generate//g;
-        $line =~ s/\-profile\-coverage\-mapping//g;
-        
-        $line =~ s/([()])/\\$1/g;
-        rtfEscape( my $lout = $line );
-        print "Line compile: $compileHighlight $lout\n";
-
-        print "!!Compiling unit tests... @{[time()]}\n";
-        foreach my $out (`time $line 2>&1`) {
-            print rtfEscape( $out );
-        }
-        error "Learnt unit test compile failed" if $?;
-    }
+    $obj .= InjectUnitTests::compile_unit_tests(\@unitTestLearnt, "$arch/injecting_class", "$InjectionBundle/");
     print "!!Compiling finished... @{[time()]}\n";
-    #
 
     #if ( $isSwift ) {
         my ($toolchain) = $learnt =~ m#(@{[$xcodeApp||'/Applications/Xcode']}.*?\.xctoolchain)/#;

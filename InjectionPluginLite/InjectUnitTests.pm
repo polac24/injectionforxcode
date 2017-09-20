@@ -1,6 +1,9 @@
 use strict;
+use Time::HiRes qw( time );
 
 package InjectUnitTests;
+
+use Time::HiRes qw( time );
 
 ##
 ## Findls all entries defined in *.swiftdeps for a given group
@@ -177,7 +180,6 @@ sub rebuild_project_and_find_unit_tests_commands{
     my @referencesUpdated = ();
     while (my ($key, $value) = each(%hash)) {
         my $files = $value->{files};
-        # print "!!files: @$files\n";
         my $swiftcLine = $value->{swiftc};
         my $isUnitTestModule = $value->{isUnitTestModule};
 
@@ -193,7 +195,6 @@ sub rebuild_project_and_find_unit_tests_commands{
 
                 # parse swiftc section output related to selectedFilePath
                 if ( grep( /^\Q$selectedFilePath\E$/, @$inputs) ){
-                    print "!! $report->{kind}, $report->{name}, $report->{inputs}\n";
                     my $injectionCommand = $report->{command};
                     my ($swiftDepsFile) = ($injectionCommand =~ /(\S*\.swiftdeps)\s/);
 
@@ -237,5 +238,41 @@ sub rebuild_project_and_find_unit_tests_commands{
     return @unitTestLearnt;
 }
 
+
+##
+##
+##
+
+sub compile_unit_tests{
+    my $unitTestLearntRef = $_[0];
+    my $outputFilePrefix = $_[1];
+    my $originalFilePath = $_[2];
+    my @unitTestLearnt = @{$unitTestLearntRef};
+    
+    my $obj = ""; 
+
+    # Compile corresponding unit tests
+    for my $i (0..$#unitTestLearnt){
+        my $line = $unitTestLearnt[$i];
+        my $objTest = "$outputFilePrefix$i.o";
+        $obj .= " $objTest ";
+        $line =~ s@( -o ).*$@$1$originalFilePath/$objTest@ or die "Could not locate object file in: $line";
+        
+        # Disable Code coverage for unit test file
+        my $generateStripped = $line =~ s/\-profile\-generate//g;
+        my $converageStripped =$line =~ s/\-profile\-coverage\-mapping//g;
+
+        if ($generateStripped || $converageStripped){
+            print "!!REBUILDDDDDDDDDD\n";
+        }else{
+            print "!!REUSEEEEEEEEEEEE\n";
+        }
+        $line =~ s/([()])/\\$1/g;
+
+        print "!!Compiling unit tests... @{[time()]}\n";
+        `time $line 2>&1`;
+    }
+    return $obj;
+}
 
 1;
