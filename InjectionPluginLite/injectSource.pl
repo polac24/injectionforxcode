@@ -15,7 +15,6 @@ use lib $FindBin::Bin;
 use JSON::PP;
 use common;
 use List::MoreUtils qw(uniq);
-use Cwd qw(abs_path);
 use InjectUnitTests;
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";
@@ -25,9 +24,8 @@ my $bundleProjectFile = "$InjectionBundle/InjectionBundle.xcodeproj/project.pbxp
 my $bundleProjectSource = -f $bundleProjectFile && loadFile( $bundleProjectFile );
 my $mainProjectFile = "$projName.xcodeproj/project.pbxproj";
 my $isSwift = $selectedFile =~ /\.swift$/;
-# my $isUnitTest = 0;
 my @unitTestLearnt = ();
-# my @unitTestResources = ();
+my @allResources = ();
 
 use utf8;
 utf8::upgrade($selectedFile);
@@ -242,11 +240,7 @@ if ( !$learnt ) {
 
         local $/ = "\r";
     FOUND:
-        foreach my $log (@logs) {
-            # $isUnitTest = 0;
-            @unitTestLearnt = ();
-            # @unitTestResources = ();
-            
+        foreach my $log (@logs) {           
             #
             # Find build commands
             #
@@ -271,35 +265,32 @@ if ( !$learnt ) {
                 }
             }
             else {
-                my $learntToolchain = 0;
                 my $requiresFileList = 0;
                 my @swiftcCommands = ();
                 my @unitTestsClangCommands = ();
                 my %copySwiftModuleCommands = {};
+                my @resourcesToLink = ();
 
                 while ( my $line = <LOG> ) {
-                    if ( index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
+                    if (!$learnt && index( $line, $filename ) != -1 && index( $line, " $arch" ) != -1 &&
                         $line =~ m!@{[$xcodeApp||""]}/Contents/Developer/Toolchains/.*?\.xctoolchain.+?@{[
                                 $isSwift ? " -primary-file ": " -c "
                             ]}("$selectedFile"|\Q$escaped\E)! ) {
                         $learnt .= ($learnt?';;':'').$line;
-                        $learntToolchain = 1;
                         $requiresFileList = $learnt =~ / -filelist /;
                     }
-                    if ( $requiresFileList ) {
-                        if ( my($filemap) = $line =~ / -output-file-map ([^ \\]+(?:\\ [^ \\]+)*) / ) {
-                            $requiresFileList = 0;
-                            $filemap =~ s/\\//g;
-                            my $file_handle = IO::File->new( "< $filemap" )
-                                || error "Could not open filemap '$filemap'";
-                            my $json_text = join'', $file_handle->getlines();
-                            my $json_map = decode_json( $json_text, { utf8  => 1 } );
-                            my $filelist = "$InjectionBundle/filelist.txt";
-                            $filelist = "$projRoot/$filelist" if $filelist !~ m@^/@;
-                            my $swift_sources = join "\n", keys %$json_map;
-                            IO::File->new( "> $filelist" )->print( $swift_sources );
-                            $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
-                        }
+                    if ($requiresFileList && (my($filemap) = $line =~ / -output-file-map ([^ \\]+(?:\\ [^ \\]+)*) / )) {
+                        $requiresFileList = 0;
+                        $filemap =~ s/\\//g;
+                        my $file_handle = IO::File->new( "< $filemap" )
+                            || error "Could not open filemap '$filemap'";
+                        my $json_text = join'', $file_handle->getlines();
+                        my $json_map = decode_json( $json_text, { utf8  => 1 } );
+                        my $filelist = "$InjectionBundle/filelist.txt";
+                        $filelist = "$projRoot/$filelist" if $filelist !~ m@^/@;
+                        my $swift_sources = join "\n", keys %$json_map;
+                        IO::File->new( "> $filelist" )->print( $swift_sources );
+                        $learnt =~ s/( -filelist )(\S+)( )/$1$filelist$3/;
                     }
 
                     if ( $line =~ /\/swiftc\s/ &&
@@ -316,14 +307,24 @@ if ( !$learnt ) {
                     if ($line =~ /ditto\s\-rsrc.*\/([^\/]*)\.swiftmodule\/$arch.swiftmodule/ )  {
                         $copySwiftModuleCommands{$1} = $line;
                     }
+
+                    if ($line =~ /\"Copy\s([^\"]*)([^\"]*)\d*\"CpResource\s\2\s/ )  {
+                        my $resourcePath = "$1$2";
+                        push (@resourcesToLink, $resourcePath);
+                    }
                 }
 
-                if ($learntToolchain && $isSwift && (scalar @unitTestsClangCommands > 0)) {
-                    @unitTestLearnt = InjectUnitTests::rebuild_project_and_find_unit_tests_commands($selectedFile, \@swiftcCommands, \@unitTestsClangCommands, \%copySwiftModuleCommands);
+                # Unit tests procedure
+                if ($isSwift && (scalar @unitTestsClangCommands > 0)) {
+                    my $hashRef = InjectUnitTests::rebuild_project_and_find_unit_tests_commands($selectedFile, \@swiftcCommands, \@unitTestsClangCommands, \%copySwiftModuleCommands);
+                    $learnt = $hashRef->{implementationCommand} if !$learnt;
+                    
+                    @unitTestLearnt = @{$hashRef->{unitTestLearnt}} if $learnt;
+                    @allResources = @resourcesToLink if $learnt;
                 }
 
-                error "Could not locate filemap" if $requiresFileList && $learntToolchain;
-                last FOUND if $learntToolchain;
+                error "Could not locate filemap" if $requiresFileList && $learnt;
+                last FOUND if $learnt;
             }
         }
 
@@ -616,12 +617,10 @@ if ( $flags & $INJECTION_STORYBOARD ) {
 }
 
 # Link all resources as symbolic link to a bundle 
-# if ($isUnitTest &&  (scalar @unitTestResources) > 0 ){
-#     foreach my $unitTestResource (@unitTestResources) {
-#         my $copyCommand = "ln -sf @{[abs_path($unitTestResource)]} \"$bundlePath\" || true";
-#         0 == system $copyCommand;
-#     }
-# }
+foreach my $resourceFullpath (@allResources) {
+    my $copyCommand = "ln -sf $resourceFullpath \"$bundlePath\" || true";
+    0 == system $copyCommand;
+}
 
 $identity = "-" if !$isDevice;
 if ( $identity ) {

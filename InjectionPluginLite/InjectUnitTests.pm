@@ -178,6 +178,7 @@ sub rebuild_project_and_find_unit_tests_commands{
     my @swiftDepsPaths2 = ();
     my @unitTestFiles = ();
     my @referencesUpdated = ();
+    my $implementationCommand = "";
     while (my ($key, $value) = each(%hash)) {
         my $files = $value->{files};
         my $swiftcLine = $value->{swiftc};
@@ -197,6 +198,9 @@ sub rebuild_project_and_find_unit_tests_commands{
                 if ( grep( /^\Q$selectedFilePath\E$/, @$inputs) ){
                     my $injectionCommand = $report->{command};
                     my ($swiftDepsFile) = ($injectionCommand =~ /(\S*\.swiftdeps)\s/);
+                    my $learntInjection = $injectionCommand;
+                    $learntInjection =~ s/\-filelist\s\S*\s/ @{[join(" ", @{$value->{files}})]} /;
+                    $implementationCommand = $learntInjection;
 
                     @referencesUpdated = (get_swiftdeps($swiftDepsFile, "provides-nominal"), get_swiftdeps($swiftDepsFile, "provides-member"));
                 }
@@ -235,7 +239,7 @@ sub rebuild_project_and_find_unit_tests_commands{
         }
         print ("!!TEST_4: @{[time()]}\n");
     }
-    return @unitTestLearnt;
+    return {"unitTestLearnt" => \@unitTestLearnt, "implementationCommand" => $implementationCommand};
 }
 
 
