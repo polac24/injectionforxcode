@@ -1,9 +1,7 @@
 use strict;
-use Time::HiRes qw( time );
 
 package InjectUnitTests;
 
-use Time::HiRes qw( time );
 use List::MoreUtils qw(uniq);
 
 ##
@@ -187,11 +185,8 @@ sub rebuild_project_and_find_unit_tests_commands{
 
         ## Rebuild swift module that includes selectedFilePath
         if (index ($swiftcLine, $selectedFilePath) != -1){
-            print ("!!NOW1: @{[time()]}\n");
             my $outputs = swiftc_command($swiftcLine);
-            print ("!!NOW2: @{[time()]}\n");
             `$copySwiftModuleCommands{$key}`;
-            print ("!!NOW2b: @{[time()]}\n");
             foreach my $report (@$outputs){
                 my $inputs = $report->{inputs};
 
@@ -208,7 +203,6 @@ sub rebuild_project_and_find_unit_tests_commands{
                     
                 }
             }
-            print ("!!NOW4: @{[time()]}\n");
         }
     }
 
@@ -226,11 +220,7 @@ sub rebuild_project_and_find_unit_tests_commands{
         my $filesToCommand = join(" ", @files);
 
         my $swiftcLine = $value->{swiftc};
-        print ("!!TEST_1: @{[time()]}\n");
-        # my $swiftcOutputString = `$swiftcLine 2>&1 | sed -e 's/^[0-9]*\$/,/g'`;
-        print ("!!TEST_2: @{[time()]}\n");
         my $swiftcOutput = swiftc_command($swiftcLine);
-        print ("!!TEST_3: @{[time()]}\n");
         for my $report ( @$swiftcOutput ) {
             ## TODO: depend on intersection between @affected_unit_files and $report->{inputs} 
             my $input = $report->{inputs}[0];
@@ -242,7 +232,6 @@ sub rebuild_project_and_find_unit_tests_commands{
                 push (@unitTestLearnt, $nonFileCommand);
             }
         }
-        print ("!!TEST_4: @{[time()]}\n");
     }
     return {"unitTestLearnt" => \@unitTestLearnt, "implementationCommand" => $implementationCommand};
 }
@@ -275,7 +264,6 @@ sub compile_unit_tests{
         if ($generateStripped || $converageStripped){
             $line =~ s/([()])/\\$1/g;
 
-            print "!!Compiling unit tests... @{[time()]}\n";
             `time $line 2>&1`;
         }else{
             # Manual rebuild not required, just move .o into expected path

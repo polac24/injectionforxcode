@@ -430,7 +430,7 @@ if ( $learnt ) {
     rtfEscape( my $lout = $learnt );
     print "Learnt compile: $compileHighlight $lout\n";
 
-    print "!!Compiling $selectedFile @{[time()]}\n";
+    print "!!Compiling $selectedFile\n";
     foreach my $out (`time $learnt 2>&1`) {
         print "!!$out";
         print rtfEscape( $out );
@@ -438,7 +438,6 @@ if ( $learnt ) {
     error "Learnt compile failed" if $?;
 
     $obj .= InjectUnitTests::compile_unit_tests(\@unitTestLearnt, "$arch/injecting_class", "$InjectionBundle/");
-    print "!!Compiling finished... @{[time()]}\n";
 
     #if ( $isSwift ) {
         my ($toolchain) = $learnt =~ m#(@{[$xcodeApp||'/Applications/Xcode']}.*?\.xctoolchain)/#;
