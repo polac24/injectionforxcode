@@ -14,7 +14,6 @@ use FindBin;
 use lib $FindBin::Bin;
 use JSON::PP;
 use common;
-use List::MoreUtils qw(uniq);
 use InjectUnitTests;
 
 my $compileHighlight = "{\\colortbl;\\red0\\green0\\blue0;\\red160\\green255\\blue160;}\\cb2\\i1";

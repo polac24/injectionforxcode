@@ -4,6 +4,7 @@ use Time::HiRes qw( time );
 package InjectUnitTests;
 
 use Time::HiRes qw( time );
+use List::MoreUtils qw(uniq);
 
 ##
 ## Findls all entries defined in *.swiftdeps for a given group
@@ -203,6 +204,8 @@ sub rebuild_project_and_find_unit_tests_commands{
                     $implementationCommand = $learntInjection;
 
                     @referencesUpdated = (get_swiftdeps($swiftDepsFile, "provides-nominal"), get_swiftdeps($swiftDepsFile, "provides-member"));
+                    @referencesUpdated = uniq @referencesUpdated;
+                    
                 }
             }
             print ("!!NOW4: @{[time()]}\n");
@@ -213,9 +216,10 @@ sub rebuild_project_and_find_unit_tests_commands{
     while (my ($key, $value) = each(%unitTestFiles)) {
         next if !$value->{update_unit_files};
 
-        my $inject_unit_filesRef = $value->{update_unit_files};
-        my @inject_unit_files = @$inject_unit_filesRef;
-        next if scalar @inject_unit_files == 0;
+        my $affected_unit_filesRef = $value->{update_unit_files};
+        my @affected_unit_files = @$affected_unit_filesRef;
+        @affected_unit_files = grep !/\Q$selectedFilePath\E/, @affected_unit_files;
+        next if scalar @affected_unit_files == 0;
 
         my $filesRef = $value->{files};
         my @files = @$filesRef;
@@ -228,9 +232,10 @@ sub rebuild_project_and_find_unit_tests_commands{
         my $swiftcOutput = swiftc_command($swiftcLine);
         print ("!!TEST_3: @{[time()]}\n");
         for my $report ( @$swiftcOutput ) {
-            ## TODO: depend on intersection between @inject_unit_files and $report->{inputs} 
+            ## TODO: depend on intersection between @affected_unit_files and $report->{inputs} 
             my $input = $report->{inputs}[0];
-            if ( grep( /^\Q$input\E$/, @inject_unit_files) ){
+            if ( grep( /^\Q$input\E$/, @affected_unit_files) ){
+                @affected_unit_files = grep !/\Q$input\E/, @affected_unit_files;
                 my $injectionCommand = $report->{command};
                 my $nonFileCommand = $injectionCommand;
                 $nonFileCommand =~ s/\-filelist\s\S*\s/ $filesToCommand /;
