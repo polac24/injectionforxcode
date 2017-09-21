@@ -265,21 +265,22 @@ sub compile_unit_tests{
         my $line = $unitTestLearnt[$i];
         my $objTest = "$outputFilePrefix$i.o";
         $obj .= " $objTest ";
-        $line =~ s@( -o ).*$@$1$originalFilePath/$objTest@ or die "Could not locate object file in: $line";
+        my ($oldFile) = $line =~ / -o (.*)$/; 
+        $line =~ s@( -o )(.*)$@$1$originalFilePath/$objTest@ or die "Could not locate object file in: $line";
         
         # Disable Code coverage for unit test file
         my $generateStripped = $line =~ s/\-profile\-generate//g;
         my $converageStripped =$line =~ s/\-profile\-coverage\-mapping//g;
 
         if ($generateStripped || $converageStripped){
-            print "!!REBUILDDDDDDDDDD\n";
-        }else{
-            print "!!REUSEEEEEEEEEEEE\n";
-        }
-        $line =~ s/([()])/\\$1/g;
+            $line =~ s/([()])/\\$1/g;
 
-        print "!!Compiling unit tests... @{[time()]}\n";
-        `time $line 2>&1`;
+            print "!!Compiling unit tests... @{[time()]}\n";
+            `time $line 2>&1`;
+        }else{
+            # Manual rebuild not required, just move .o into expected path
+            `mv $oldFile $originalFilePath$objTest`;
+        }
     }
     return $obj;
 }
