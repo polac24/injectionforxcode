@@ -308,8 +308,7 @@ if ( !$learnt ) {
                     }
 
                     if ($line =~ /\"Copy\s([^\"]*)([^\"]*)\d*\"CpResource\s\2\s/ )  {
-                        my $resourcePath = "$1$2";
-                        push (@resourcesToLink, $resourcePath);
+                        push (@resourcesToLink, "$1$2");
                     }
                 }
 
