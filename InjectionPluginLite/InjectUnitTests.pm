@@ -2,8 +2,19 @@ use strict;
 
 package InjectUnitTests;
 
+use common;
 use List::MoreUtils qw(uniq);
 
+
+sub execute_command {
+    my $command = $_[0];
+
+    foreach my $out (`$command 2>&1`) {
+        print "!!$out";
+        print rtfEscape( $out );
+    }
+    error("Unit tests compile failed") if $?;
+}
 ##
 ## Findls all entries defined in *.swiftdeps for a given group
 ## Sample group (arg): "provides-nominal" or "provides-member"...
@@ -178,6 +189,7 @@ sub rebuild_project_and_find_unit_tests_commands{
     my @unitTestFiles = ();
     my @referencesUpdated = ();
     my $implementationCommand = "";
+    print "!!Compiling for unit tests...\n";
     while (my ($key, $value) = each(%hash)) {
         my $files = $value->{files};
         my $swiftcLine = $value->{swiftc};
@@ -186,7 +198,8 @@ sub rebuild_project_and_find_unit_tests_commands{
         ## Rebuild swift module that includes selectedFilePath
         if (index ($swiftcLine, $selectedFilePath) != -1){
             my $outputs = swiftc_command($swiftcLine);
-            `$copySwiftModuleCommands{$key}`;
+            execute_command("$copySwiftModuleCommands{$key}");
+
             foreach my $report (@$outputs){
                 my $inputs = $report->{inputs};
 
@@ -238,10 +251,12 @@ sub rebuild_project_and_find_unit_tests_commands{
 
 
 ##
-##
+## Recompiles all unit test files and copy .o files into Bundle package with $outputFilePrefix name patter
+## To speed up, $originalFilePath is an existing directory with up-to-date binaries, that can be moved to a bundle
+## already executed command (in @unitTestLearnt) does not require any modification (like code coverage stripping).  
 ##
 
-sub compile_unit_tests{
+sub recompile_unit_tests{
     my $unitTestLearntRef = $_[0];
     my $outputFilePrefix = $_[1];
     my $originalFilePath = $_[2];
@@ -254,7 +269,7 @@ sub compile_unit_tests{
         my $line = $unitTestLearnt[$i];
         my $objTest = "$outputFilePrefix$i.o";
         $obj .= " $objTest ";
-        my ($oldFile) = $line =~ / -o (.*)$/; 
+        my ($oldFile) = $line =~ / -o (\S*)/; 
         $line =~ s@( -o )(.*)$@$1$originalFilePath/$objTest@ or die "Could not locate object file in: $line";
         
         # Disable Code coverage for unit test file
@@ -264,10 +279,12 @@ sub compile_unit_tests{
         if ($generateStripped || $converageStripped){
             $line =~ s/([()])/\\$1/g;
 
-            `time $line 2>&1`;
+            execute_command("time $line");
         }else{
-            # Manual rebuild not required, just move .o into expected path
-            `mv $oldFile $originalFilePath$objTest`;
+            # Manual rebuild of test file not required (swiftc ensures up-to-date) .o binary
+            # Just move .o into expected path
+
+            execute_command("mv $oldFile $originalFilePath$objTest");
         }
     }
     return $obj;

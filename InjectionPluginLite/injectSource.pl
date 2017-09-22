@@ -437,7 +437,7 @@ if ( $learnt ) {
     }
     error "Learnt compile failed" if $?;
 
-    $obj .= InjectUnitTests::compile_unit_tests(\@unitTestLearnt, "$arch/injecting_class", "$InjectionBundle/");
+    $obj .= InjectUnitTests::recompile_unit_tests(\@unitTestLearnt, "$arch/injecting_class", "$InjectionBundle/");
 
     #if ( $isSwift ) {
         my ($toolchain) = $learnt =~ m#(@{[$xcodeApp||'/Applications/Xcode']}.*?\.xctoolchain)/#;
