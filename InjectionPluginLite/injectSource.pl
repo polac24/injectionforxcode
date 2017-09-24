@@ -293,7 +293,7 @@ if ( !$learnt ) {
                     }
 
                     if ( $line =~ /\/swiftc\s/ &&
-                        (my ($localModuleName) = $line =~ /\-module\-name\s(\S*)\s/) ){
+                        (my ($localModuleName) = $line =~ /-module-name\s(\S*)\s/) ){
                             my $swiftCLine = $line;
                             $swiftCLine =~ s/^\s+|\s+$//g;
                             push (@swiftcCommands, $swiftCLine);
@@ -303,7 +303,7 @@ if ( !$learnt ) {
                         push (@unitTestsClangCommands, $line);
                     }
 
-                    if ($line =~ /ditto\s\-rsrc.*\/([^\/]*)\.swiftmodule\/$arch.swiftmodule/ )  {
+                    if ($line =~ /ditto\s-rsrc.*\/([^\/]*)\.swiftmodule\/$arch.swiftmodule/ )  {
                         $copySwiftModuleCommands{$1} = $line;
                     }
 
@@ -419,11 +419,11 @@ if ( $learnt ) {
 
     # Disable Code coverage for injection file
     # swift
-    $learnt =~ s/\-profile\-generate//g;
-    $learnt =~ s/\-profile\-coverage\-mapping//g;
+    $learnt =~ s/-profile-generate//g;
+    $learnt =~ s/-profile-coverage-mapping//g;
     # objc
-    $learnt =~ s/\-fprofile\-instr\-generate//g;
-    $learnt =~ s/\-fcoverage\-mapping//g;
+    $learnt =~ s/-fprofile-instr-generate//g;
+    $learnt =~ s/-fcoverage-mapping//g;
 
     $learnt =~ s/([()])/\\$1/g;
     rtfEscape( my $lout = $learnt );

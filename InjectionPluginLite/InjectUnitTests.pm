@@ -31,7 +31,7 @@ sub get_swiftdeps {
             last if $section eq $groupName;
             $section = $newSection;
         } elsif ($section eq $groupName) {
-           push (@groupValues, $line =~ /\-\s*(.*)$/); 
+           push (@groupValues, $line =~ /-\s*(.*)$/); 
         }
     }
     close $fh;
@@ -87,7 +87,7 @@ sub match_swift_clang_commands{
     my %modules;
 
     foreach my $swiftCCommand (@swiftCCommands){
-        my ($moduleName) = ($swiftCCommand =~ m/\-module\-name\s(\S*)\s/);
+        my ($moduleName) = ($swiftCCommand =~ m/-module-name\s(\S*)\s/);
         my @allFiles = ($swiftCCommand =~ /(\S*\.swift)\s/g);
         $modules{$moduleName} = {} if !exists $modules{$moduleName};
         
@@ -98,7 +98,7 @@ sub match_swift_clang_commands{
     foreach my $clangCommand (@clangCommands){
         my ($moduleName) = ($clangCommand =~ m/([^\/\s]*)\.swiftmodule\s/);
         my ($swiftOutputPath) = ($clangCommand =~ m/\s(\S*)\/([^\/\s]*)\.swiftmodule\s/);
-        my $isUnitTestModule = $clangCommand =~ /\-framework\sXCTest\s/;
+        my $isUnitTestModule = $clangCommand =~ /-framework\sXCTest\s/;
         $modules{$moduleName} = {} if !exists $modules{$moduleName};
 
         $modules{$moduleName}{isUnitTestModule} = $isUnitTestModule;
@@ -208,7 +208,7 @@ sub rebuild_project_and_find_unit_tests_commands{
                     my $injectionCommand = $report->{command};
                     my ($swiftDepsFile) = ($injectionCommand =~ /(\S*\.swiftdeps)\s/);
                     my $learntInjection = $injectionCommand;
-                    $learntInjection =~ s/\-filelist\s\S*\s/ @{[join(" ", @{$value->{files}})]} /;
+                    $learntInjection =~ s/-filelist\s\S*\s/ @{[join(" ", @{$value->{files}})]} /;
                     $implementationCommand = $learntInjection;
 
                     @referencesUpdated = (get_swiftdeps($swiftDepsFile, "provides-nominal"), get_swiftdeps($swiftDepsFile, "provides-member"));
@@ -241,7 +241,7 @@ sub rebuild_project_and_find_unit_tests_commands{
                 @affected_unit_files = grep !/\Q$input\E/, @affected_unit_files;
                 my $injectionCommand = $report->{command};
                 my $nonFileCommand = $injectionCommand;
-                $nonFileCommand =~ s/\-filelist\s\S*\s/ $filesToCommand /;
+                $nonFileCommand =~ s/-filelist\s\S*\s/ $filesToCommand /;
                 push (@unitTestLearnt, $nonFileCommand);
             }
         }
@@ -273,8 +273,8 @@ sub recompile_unit_tests{
         $line =~ s@( -o )(.*)$@$1$originalFilePath/$objTest@ or die "Could not locate object file in: $line";
         
         # Disable Code coverage for unit test file
-        my $generateStripped = $line =~ s/\-profile\-generate//g;
-        my $converageStripped =$line =~ s/\-profile\-coverage\-mapping//g;
+        my $generateStripped = $line =~ s/-profile-generate//g;
+        my $converageStripped =$line =~ s/-profile-coverage-mapping//g;
 
         if ($generateStripped || $converageStripped){
             $line =~ s/([()])/\\$1/g;
