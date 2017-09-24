@@ -284,7 +284,7 @@ sub recompile_unit_tests{
             # Manual rebuild of test file not required (swiftc ensures up-to-date) .o binary
             # Just move .o into expected path
 
-            execute_command("mv $oldFile $originalFilePath$objTest");
+            execute_command("cp $oldFile $originalFilePath$objTest");
         }
     }
     return $obj;
