@@ -203,17 +203,18 @@ sub rebuild_project_and_find_unit_tests_commands{
             foreach my $report (@$outputs){
                 my $inputs = $report->{inputs};
 
+                my $injectionCommand = $report->{command};
+                my ($swiftDepsFile) = ($injectionCommand =~ /(\S*\.swiftdeps)\s/);
+                my $learntInjection = $injectionCommand;
+                $learntInjection =~ s/-filelist\s\S*\s/ @{[join(" ", @{$value->{files}})]} /;
+                $implementationCommand = $learntInjection;
+
                 # parse swiftc section output related to selectedFilePath
                 if ( grep( /^\Q$selectedFilePath\E$/, @$inputs) ){
-                    my $injectionCommand = $report->{command};
-                    my ($swiftDepsFile) = ($injectionCommand =~ /(\S*\.swiftdeps)\s/);
-                    my $learntInjection = $injectionCommand;
-                    $learntInjection =~ s/-filelist\s\S*\s/ @{[join(" ", @{$value->{files}})]} /;
-                    $implementationCommand = $learntInjection;
-
                     @referencesUpdated = (get_swiftdeps($swiftDepsFile, "provides-nominal"), get_swiftdeps($swiftDepsFile, "provides-member"));
                     @referencesUpdated = uniq @referencesUpdated;
-                    
+                }elsif ($learntInjection){
+                    push (@unitTestLearnt, $learntInjection);
                 }
             }
         }
@@ -235,13 +236,16 @@ sub rebuild_project_and_find_unit_tests_commands{
         my $swiftcLine = $value->{swiftc};
         my $swiftcOutput = swiftc_command($swiftcLine);
         for my $report ( @$swiftcOutput ) {
+            my $injectionCommand = $report->{command};
+            my $nonFileCommand = $injectionCommand;
+            $nonFileCommand =~ s/-filelist\s\S*\s/ $filesToCommand /;
+
             ## TODO: depend on intersection between @affected_unit_files and $report->{inputs} 
             my $input = $report->{inputs}[0];
             if ( grep( /^\Q$input\E$/, @affected_unit_files) ){
                 @affected_unit_files = grep !/\Q$input\E/, @affected_unit_files;
-                my $injectionCommand = $report->{command};
-                my $nonFileCommand = $injectionCommand;
-                $nonFileCommand =~ s/-filelist\s\S*\s/ $filesToCommand /;
+                push (@unitTestLearnt, $nonFileCommand);
+            }elsif ($nonFileCommand){
                 push (@unitTestLearnt, $nonFileCommand);
             }
         }
