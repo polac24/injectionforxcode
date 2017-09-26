@@ -153,6 +153,7 @@ sub swiftc_command{
         next if !($line =~ /^\s*\d+\s*$/);
         
         push (@reports, $report);
+        last if $report->{kind} eq "finished" && $report->{name} eq "merge-module";
         $report = {};
         $status = "";
     }
