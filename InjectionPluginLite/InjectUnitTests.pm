@@ -276,6 +276,9 @@ sub recompile_unit_tests{
         my $generateStripped = $line =~ s/-profile-generate//g;
         my $converageStripped =$line =~ s/-profile-coverage-mapping//g;
 
+        my (@usedFrameworks) = $line =~ /(-F\s\S*)\s/g;
+        $obj .= "@usedFrameworks";
+        
         if ($generateStripped || $converageStripped){
             $line =~ s/([()])/\\$1/g;
 
