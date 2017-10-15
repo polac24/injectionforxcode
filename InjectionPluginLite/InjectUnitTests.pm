@@ -126,8 +126,8 @@ sub swiftc_command{
     my $report = {};
     while ( my $line = <SWIFTC> ) {
         if ($line =~ /\"(kind|name|command)\"\:/){
-            my ($myKey) = ($line =~ /\s*\"(\S*)\"\:/);
-            my ($myValue) = ($line =~ /\:\s*\"([^\"]*)\"/);
+            my ($myKey) = ($line =~ /\s*\"(.*[^\\])\"\:/);
+            my ($myValue) = ($line =~ /\:\s*\"(.*[^\\])\"/);
             $myValue =~ s/\\\//\//g;
             $report->{$myKey} = $myValue;
             $status = "";
@@ -137,11 +137,11 @@ sub swiftc_command{
             $status = "inputs";
             next;
         }
-        if ($line =~ /\"\S*\"\:/){
+        if ($line =~ /\".*[^\\]\"\:/){
             $status = "";
             next;
         }
-        if ($status eq "inputs" && $line =~ /\"(\S*)\"/){
+        if ($status eq "inputs" && $line =~ /\"(.*[^\\])\"/){
             my ($inputValue) = $1;
             $inputValue =~ s/\\\//\//g;
             my @empty = ();
