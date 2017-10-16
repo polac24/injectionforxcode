@@ -1,0 +1,6 @@
+
+language: objective-c
+osx_image: xcode9
+
+script:
+- set -o pipefail && xcodebuild -project InjectionPluginLite/InjectionPlugin.xcodeproj -scheme InjectionPlugin CODE_SIGNING_REQUIRED=NO  build  | xcpretty
